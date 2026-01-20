@@ -13,6 +13,7 @@ import io.vertx.core.ThreadingModel;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.channels.ClosedChannelException;
 import java.util.Objects;
 import java.util.logging.*;
 
@@ -97,10 +98,11 @@ public class Config {
                 rootLogger.removeHandler(handler);
             }
         }
-
+        IgnoreExceptionLogFilter brokenPipeFilter = new IgnoreExceptionLogFilter();
         ConsoleHandler consoleHandler = new ConsoleHandler();
         consoleHandler.setLevel(Level.FINEST);
         consoleHandler.setFormatter(new SimpleFormatter());
+        consoleHandler.setFilter(brokenPipeFilter);
         rootLogger.addHandler(consoleHandler);
 
         try {
@@ -109,6 +111,7 @@ public class Config {
             FileHandler fileHandler = new FileHandler(logFilePattern, 5000000, 3, true);
             fileHandler.setLevel(Level.FINEST);
             fileHandler.setFormatter(new SimpleFormatter());
+            fileHandler.setFilter(brokenPipeFilter);
             rootLogger.addHandler(fileHandler);
         } catch (IOException e) {
             System.out.println("Failed to create log FileHandler: " + e.getMessage());
@@ -151,6 +154,25 @@ public class Config {
 
         public Log createLog(Class<?> clazz) {
             return new JdkLog(clazz);
+        }
+    }
+
+    public static class IgnoreExceptionLogFilter implements Filter {
+
+        @Override
+        public boolean isLoggable(LogRecord record) {
+            Throwable t = record.getThrown();
+            if (t instanceof IOException &&
+                t.getMessage() != null &&
+                t.getMessage().contains("Broken pipe")) {
+                return false;
+            }
+
+            if (t instanceof ClosedChannelException) {
+                return false;
+            }
+
+            return true;
         }
     }
 }
