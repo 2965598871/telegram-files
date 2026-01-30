@@ -456,9 +456,9 @@ export default function FileFilters({
       <DrawerTrigger asChild>
         <Button
           variant="outline"
-          className={cn("relative gap-2", isMobile && "z-50 w-9")}
+          className={cn("relative gap-2", isMobile && "z-50 w-11 h-11") }
         >
-          <Filter className="h-5 w-5" />
+          <Filter />
           {!isMobile && "Filters"}
           {filterCount > 0 && (
             <span className="absolute left-0 top-0 -ml-1 -mt-1 flex h-6 w-6 items-center justify-center rounded-full bg-red-500 text-xs text-white">
