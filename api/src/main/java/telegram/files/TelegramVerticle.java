@@ -57,6 +57,8 @@ public class TelegramVerticle extends AbstractVerticle {
 
     private long avgSpeedPersistenceTimerId;
 
+    private long downloadStatusReconciliationTimerId;
+
     private long lastFileEventTime;
 
     private long lastFileDownloadEventTime;
@@ -100,6 +102,7 @@ public class TelegramVerticle extends AbstractVerticle {
         client.initialize(telegramUpdateHandler, this::handleException, this::handleException);
         Future.all(initEventConsumer(), initAvgSpeed())
                 .compose(_ -> this.enableProxy(this.proxyName))
+                .compose(_ -> this.initDownloadStatusReconciliation())
                 .onSuccess(_ -> startPromise.complete())
                 .onFailure(startPromise::fail);
     }
@@ -111,6 +114,10 @@ public class TelegramVerticle extends AbstractVerticle {
     }
 
     public Future<Void> close(boolean needDelete) {
+        if (downloadStatusReconciliationTimerId != 0) {
+            vertx.cancelTimer(downloadStatusReconciliationTimerId);
+            downloadStatusReconciliationTimerId = 0;
+        }
         return client.execute(new TdApi.Close())
                 .onSuccess(_ -> {
                     log.info("[%s] Telegram account closed".formatted(this.getRootId()));
@@ -765,6 +772,60 @@ public class TelegramVerticle extends AbstractVerticle {
         return Future.succeededFuture();
     }
 
+    private Future<Void> initDownloadStatusReconciliation() {
+        // Set up periodic timer to reconcile download statuses every 30 seconds
+        if (downloadStatusReconciliationTimerId == 0) {
+            downloadStatusReconciliationTimerId = vertx.setPeriodic(30000, _ -> reconcileDownloadStatuses());
+            log.debug("[%s] Download status reconciliation timer initialized".formatted(getRootId()));
+        }
+        return Future.succeededFuture();
+    }
+
+    private void reconcileDownloadStatuses() {
+        if (!authorized || telegramRecord == null) {
+            return;
+        }
+
+        log.trace("[%s] Starting download status reconciliation".formatted(getRootId()));
+
+        DataVerticle.fileRepository.getByDownloadStatus(telegramRecord.id(), FileRecord.DownloadStatus.downloading)
+                .onSuccess(fileRecords -> {
+                    if (fileRecords == null || fileRecords.isEmpty()) {
+                        return;
+                    }
+
+                    log.debug("[%s] Reconciling %d files with 'downloading' status".formatted(getRootId(), fileRecords.size()));
+                    int[] reconciledCount = {0};
+
+                    fileRecords.forEach(fileRecord -> {
+                        client.execute(new TdApi.GetFile(fileRecord.id()))
+                                .onSuccess(file -> {
+                                    if (file.local != null && file.local.isDownloadingCompleted) {
+                                        log.info("[%s] Reconciliation: File completed but not updated in DB: %s".formatted(getRootId(), file.remote.uniqueId));
+                                        reconciledCount[0]++;
+
+                                        DataVerticle.fileRepository.updateDownloadStatus(
+                                                file.id,
+                                                file.remote.uniqueId,
+                                                file.local.path,
+                                                FileRecord.DownloadStatus.completed,
+                                                System.currentTimeMillis()
+                                        ).onSuccess(result -> {
+                                            sendFileStatusHttpEvent(file, result);
+                                            log.debug("[%s] Reconciliation fixed file status: %s".formatted(getRootId(), file.remote.uniqueId));
+                                        });
+                                    }
+                                })
+                                .onFailure(e -> log.trace("[%s] Failed to get file during reconciliation: %s - %s".formatted(getRootId(), fileRecord.uniqueId(), e.getMessage())));
+                    });
+
+                    if (reconciledCount[0] > 0) {
+                        log.info("[%s] Reconciliation completed: fixed %d stuck downloads".formatted(getRootId(), reconciledCount[0]));
+                    }
+                })
+                .onFailure(e -> log.error("[%s] Failed to get downloading files for reconciliation: %s".formatted(getRootId(), e.getMessage())));
+    }
+
     private void onAuthorizationStateUpdated(TdApi.AuthorizationState authorizationState) {
         log.debug("[%s] Receive authorization state update: %s".formatted(getRootId(), authorizationState));
         this.lastAuthorizationState = authorizationState;
@@ -858,7 +919,13 @@ public class TelegramVerticle extends AbstractVerticle {
                                 return;
                             }
                             if (downloadStatus == null) {
-                                downloadStatus = FileRecord.DownloadStatus.idle;
+                                // Check if download actually completed even though getDownloadStatus returned null
+                                if (file.local != null && file.local.isDownloadingCompleted) {
+                                    log.debug("[%s] File download completed but getDownloadStatus returned null: %s".formatted(getRootId(), file.remote.uniqueId));
+                                    downloadStatus = FileRecord.DownloadStatus.completed;
+                                } else {
+                                    downloadStatus = FileRecord.DownloadStatus.idle;
+                                }
                             }
                             DataVerticle.fileRepository.updateDownloadStatus(file.id,
                                             file.remote.uniqueId,

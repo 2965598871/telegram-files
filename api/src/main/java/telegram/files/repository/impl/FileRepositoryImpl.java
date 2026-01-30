@@ -494,6 +494,21 @@ public class FileRepositoryImpl extends AbstractSqlRepository implements FileRep
     }
 
     @Override
+    public Future<List<FileRecord>> getByDownloadStatus(long telegramId, FileRecord.DownloadStatus downloadStatus) {
+        return SqlTemplate
+                .forQuery(sqlClient, """
+                        SELECT * FROM file_record
+                        WHERE telegram_id = #{telegramId}
+                          AND download_status = #{downloadStatus}
+                          AND type != 'thumbnail'
+                        """)
+                .mapTo(FileRecord.ROW_MAPPER)
+                .execute(Map.of("telegramId", telegramId, "downloadStatus", downloadStatus.name()))
+                .map(IterUtil::toList)
+                .onFailure(err -> log.error("Failed to get file records by download status: %s".formatted(err.getMessage())));
+    }
+
+    @Override
     public Future<JsonObject> countWithType(long telegramId, long chatId) {
         String whereClause = "type != 'thumbnail'";
         Map<String, Object> params = new HashMap<>();

@@ -35,6 +35,8 @@ public interface FileRepository {
 
     Future<Integer> countByStatus(long telegramId, FileRecord.DownloadStatus downloadStatus);
 
+    Future<List<FileRecord>> getByDownloadStatus(long telegramId, FileRecord.DownloadStatus downloadStatus);
+
     Future<JsonObject> countWithType(long telegramId, long chatId);
 
     Future<JsonObject> updateDownloadStatus(int fileId,
