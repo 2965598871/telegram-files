@@ -40,8 +40,9 @@ This directory contains the first phase of the backend migration from Java (Vert
   - `POST /files/update-tags`
   - `POST /file/{uniqueId}/update-tags`
   - schema bootstrap for `setting_record`, `telegram_record`, `file_record`, `statistic_record`
-- Stubbed (returns `501`)
-  - `GET /telegram/{telegramId}/chat/{chatId}/files` when `link` query param is used
+- Worker support
+  - Background preload, auto-download, and transfer loops run in the Python backend
+  - Behavior is migration-phase and keeps compatibility as the primary goal
 
 ## Run locally
 
