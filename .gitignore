@@ -18,3 +18,20 @@ http-client.private.env.json
 
 docker-compose-*.yaml
 docker-compose-*.yml
+
+pyapi/.venv/
+pyapi/**/__pycache__/
+
+*.mp4
+*.mkv
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+
+*.db
+*.db-shm
+*.db-wal
+
+*.binlog
+
+.env

@@ -40,6 +40,11 @@ interface AccountCreatorProps {
   onLoginSuccess?: () => void;
 }
 
+interface TelegramCreateResponse {
+  id: string;
+  lastState?: TelegramObject;
+}
+
 const Lottie = dynamic(() => import("lottie-react"), { ssr: false });
 
 export default function AccountCreator({
@@ -66,7 +71,7 @@ export default function AccountCreator({
     trigger: triggerCreate,
     isMutating: isCreateMutating,
     error: createError,
-  } = useSWRMutation<{ id: string }, Error>(
+  } = useSWRMutation<TelegramCreateResponse, Error>(
     "/telegram/create",
     async (key: string) => {
       return await request(key, {
@@ -75,11 +80,6 @@ export default function AccountCreator({
           proxyName: proxyName,
         }),
       });
-    },
-    {
-      onSuccess: (data) => {
-        onCreated?.(data.id);
-      },
     },
   );
   const [debounceIsCreateMutating] = useDebounce(isCreateMutating, 1000, {
@@ -183,10 +183,13 @@ export default function AccountCreator({
           className={cn("w-full", debounceIsCreateMutating ? "opacity-50" : "")}
           disabled={debounceIsCreateMutating}
           onClick={async () => {
-            await triggerCreate().then(() => {
-              void mutate("/telegrams");
-              setInitSuccessfully(true);
-            });
+            const data = await triggerCreate();
+            onCreated?.(data.id);
+            void mutate("/telegrams");
+            setInitSuccessfully(true);
+            if (data.lastState) {
+              handleAuthState(data.lastState);
+            }
           }}
         >
           Start Initialization
