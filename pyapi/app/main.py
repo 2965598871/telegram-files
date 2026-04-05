@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import mimetypes
 import secrets
 import sqlite3
 import os
 import time
+from copy import deepcopy
 from pathlib import Path
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -36,6 +38,7 @@ from .db import (
     delete_telegram,
     get_file_preview_info,
     get_files_count,
+    get_automation_map,
     get_settings_by_keys,
     get_telegram_account,
     get_telegram_download_statistics,
@@ -135,6 +138,7 @@ SESSION_TELEGRAM_SELECTION: dict[str, str] = {}
 WS_CONNECTIONS: dict[str, set[WebSocket]] = {}
 TDLIB_DOWNLOAD_TASKS: dict[tuple[str, int, int], asyncio.Task[Any]] = {}
 TDLIB_DOWNLOAD_PROGRESS: dict[tuple[str, int, int], dict[str, Any]] = {}
+TDLIB_FILE_PREVIEW_CACHE: dict[tuple[int, str], dict[str, Any]] = {}
 
 
 @asynccontextmanager
@@ -441,6 +445,21 @@ def _td_chat_to_response(
         "lastMessageTime": "",
         "auto": _default_chat_auto(),
     }
+
+
+def _apply_chat_auto_settings(
+    chats: list[dict[str, Any]],
+    *,
+    telegram_id: int,
+    automation_map: dict[tuple[int, int], dict[str, Any]],
+) -> list[dict[str, Any]]:
+    for chat in chats:
+        chat_id = _int_or_default(chat.get("id"), 0)
+        auto = automation_map.get((telegram_id, chat_id))
+        chat["auto"] = (
+            deepcopy(auto) if isinstance(auto, dict) else _default_chat_auto()
+        )
+    return chats
 
 
 def _safe_td_file(td_file: Any) -> dict[str, Any] | None:
@@ -853,6 +872,159 @@ def _parse_link_files(
     }
 
 
+def _matches_td_file_filters(
+    file_payload: dict[str, Any], filters: dict[str, str]
+) -> bool:
+    normalized_search = str(filters.get("search") or "").strip().lower()
+    if normalized_search:
+        file_name = str(file_payload.get("fileName") or "").lower()
+        caption = str(file_payload.get("caption") or "").lower()
+        if normalized_search not in file_name and normalized_search not in caption:
+            return False
+
+    normalized_type = str(filters.get("type") or "").strip().lower()
+    if normalized_type and normalized_type != "all":
+        payload_type = str(file_payload.get("type") or "").strip().lower()
+        if normalized_type == "media":
+            if payload_type not in {"photo", "video"}:
+                return False
+        elif payload_type != normalized_type:
+            return False
+
+    normalized_download_status = (
+        str(filters.get("downloadStatus") or "").strip().lower()
+    )
+    if (
+        normalized_download_status
+        and str(file_payload.get("downloadStatus") or "").strip().lower()
+        != normalized_download_status
+    ):
+        return False
+
+    normalized_transfer_status = (
+        str(filters.get("transferStatus") or "").strip().lower()
+    )
+    if (
+        normalized_transfer_status
+        and str(file_payload.get("transferStatus") or "").strip().lower()
+        != normalized_transfer_status
+    ):
+        return False
+
+    message_thread_id_filter = _int_or_default(filters.get("messageThreadId"), 0)
+    if (
+        message_thread_id_filter != 0
+        and _int_or_default(file_payload.get("messageThreadId"), 0)
+        != message_thread_id_filter
+    ):
+        return False
+
+    if str(filters.get("tags") or "").strip():
+        return False
+
+    return True
+
+
+def _load_tdlib_chat_files(
+    td_manager: TdlibAuthManager,
+    *,
+    telegram_id: int,
+    root_path: str,
+    chat_id: int,
+    filters: dict[str, str],
+) -> dict[str, Any]:
+    if not _load_tdlib_session_for_account(td_manager, telegram_id, root_path):
+        raise RuntimeError("TDLib is not ready yet. Please try again.")
+
+    account_key = str(telegram_id)
+    from_message_id = _int_or_default(filters.get("fromMessageId"), 0)
+    limit = _int_or_default(filters.get("limit"), 20)
+    if limit <= 0:
+        limit = 20
+    if limit > 200:
+        limit = 200
+
+    request_limit = min(max(limit * 3, 50), 100)
+    max_batches = 12
+    files: list[dict[str, Any]] = []
+    seen_message_ids: set[int] = set()
+    next_cursor = from_message_id
+    has_more = False
+
+    for _ in range(max_batches):
+        history = td_manager.request(
+            account_key,
+            {
+                "@type": "getChatHistory",
+                "chat_id": chat_id,
+                "from_message_id": next_cursor,
+                "offset": 1 if next_cursor > 0 else 0,
+                "limit": request_limit,
+                "only_local": False,
+            },
+            timeout_seconds=25.0,
+        )
+        if str(history.get("@type") or "") == "error":
+            raise RuntimeError(
+                str(history.get("message") or "Failed to load chat history")
+            )
+
+        history_messages = (
+            history.get("messages") if isinstance(history, dict) else None
+        )
+        if not isinstance(history_messages, list) or not history_messages:
+            has_more = False
+            next_cursor = 0
+            break
+
+        batch_last_message_id = 0
+        for message in history_messages:
+            if not isinstance(message, dict):
+                continue
+
+            message_id = _int_or_default(message.get("id"), 0)
+            if message_id <= 0 or message_id in seen_message_ids:
+                continue
+            seen_message_ids.add(message_id)
+            batch_last_message_id = message_id
+
+            file_payload = _td_message_to_file(telegram_id, message)
+            if file_payload is None:
+                continue
+            if not _matches_td_file_filters(file_payload, filters):
+                continue
+
+            files.append(file_payload)
+            if len(files) >= limit:
+                break
+
+        if len(files) >= limit:
+            has_more = True
+            next_cursor = batch_last_message_id
+            break
+
+        if len(history_messages) < request_limit:
+            has_more = False
+            next_cursor = 0
+            break
+
+        if batch_last_message_id <= 0:
+            has_more = False
+            next_cursor = 0
+            break
+
+        has_more = True
+        next_cursor = batch_last_message_id
+
+    returned_files = files[:limit]
+    return {
+        "files": returned_files,
+        "count": 1_000_000_000 if has_more and next_cursor > 0 else len(returned_files),
+        "size": len(returned_files),
+        "nextFromMessageId": next_cursor if has_more and next_cursor > 0 else 0,
+    }
+
+
 def _td_file_status_payload(file_record: dict[str, Any]) -> dict[str, Any]:
     return {
         "fileId": _int_or_default(file_record.get("id"), 0),
@@ -862,6 +1034,456 @@ def _td_file_status_payload(file_record: dict[str, Any]) -> dict[str, Any]:
         "completionDate": _int_or_default(file_record.get("completionDate"), 0),
         "downloadedSize": _int_or_default(file_record.get("downloadedSize"), 0),
         "transferStatus": str(file_record.get("transferStatus") or "idle"),
+    }
+
+
+def _cache_tdlib_file_preview(
+    *,
+    telegram_id: int,
+    unique_id: str,
+    file_id: int | None = None,
+    mime_type: str | None = None,
+    local_path: str | None = None,
+) -> None:
+    normalized_unique = unique_id.strip()
+    if not normalized_unique:
+        return
+
+    key = (telegram_id, normalized_unique)
+    with STATE_LOCK:
+        current = dict(TDLIB_FILE_PREVIEW_CACHE.get(key) or {})
+        if file_id is not None and file_id > 0:
+            current["fileId"] = file_id
+        if mime_type:
+            current["mimeType"] = str(mime_type)
+        if local_path:
+            current["path"] = str(local_path)
+        current["updatedAt"] = int(time.time() * 1000)
+        TDLIB_FILE_PREVIEW_CACHE[key] = current
+
+
+def _evict_tdlib_file_preview(
+    *,
+    telegram_id: int,
+    unique_id: str | None = None,
+    file_id: int | None = None,
+) -> None:
+    normalized_unique = str(unique_id or "").strip()
+    normalized_file_id = int(file_id or 0)
+
+    with STATE_LOCK:
+        to_delete: list[tuple[int, str]] = []
+        for key, value in TDLIB_FILE_PREVIEW_CACHE.items():
+            key_telegram_id, key_unique_id = key
+            if key_telegram_id != telegram_id:
+                continue
+
+            matches_unique = (
+                bool(normalized_unique) and key_unique_id == normalized_unique
+            )
+            matches_file_id = (
+                normalized_file_id > 0
+                and _int_or_default(value.get("fileId"), 0) == normalized_file_id
+            )
+            if matches_unique or matches_file_id:
+                to_delete.append(key)
+
+        for key in to_delete:
+            TDLIB_FILE_PREVIEW_CACHE.pop(key, None)
+
+
+def _cached_tdlib_file_preview(
+    *,
+    telegram_id: int,
+    unique_id: str,
+) -> dict[str, Any] | None:
+    key = (telegram_id, unique_id.strip())
+    with STATE_LOCK:
+        entry = TDLIB_FILE_PREVIEW_CACHE.get(key)
+        if entry is None:
+            return None
+        return dict(entry)
+
+
+def _unique_id_from_tdlib_file_cache(
+    *,
+    telegram_id: int,
+    file_id: int,
+) -> str:
+    if file_id <= 0:
+        return ""
+
+    with STATE_LOCK:
+        for (
+            cache_telegram_id,
+            cache_unique_id,
+        ), payload in TDLIB_FILE_PREVIEW_CACHE.items():
+            if cache_telegram_id != telegram_id:
+                continue
+            if _int_or_default(payload.get("fileId"), 0) == file_id:
+                return cache_unique_id
+    return ""
+
+
+def _resolve_tdlib_file_reference(
+    *,
+    telegram_id: int,
+    file_id: int,
+    unique_id: str,
+) -> tuple[int, str]:
+    normalized_unique = unique_id.strip()
+    normalized_file_id = file_id
+
+    if normalized_file_id <= 0 and normalized_unique:
+        cached = _cached_tdlib_file_preview(
+            telegram_id=telegram_id,
+            unique_id=normalized_unique,
+        )
+        normalized_file_id = _int_or_default((cached or {}).get("fileId"), 0)
+
+    if not normalized_unique and normalized_file_id > 0:
+        normalized_unique = _unique_id_from_tdlib_file_cache(
+            telegram_id=telegram_id,
+            file_id=normalized_file_id,
+        )
+
+    return normalized_file_id, normalized_unique
+
+
+def _media_type_for_path(path: str, hint: str | None) -> str:
+    normalized_hint = str(hint or "").strip()
+    if normalized_hint:
+        return normalized_hint
+    guessed, _ = mimetypes.guess_type(path)
+    return str(guessed or "application/octet-stream")
+
+
+def _resolve_tdlib_preview_info(
+    td_manager: TdlibAuthManager,
+    *,
+    telegram_id: int,
+    root_path: str,
+    unique_id: str,
+) -> dict[str, Any] | None:
+    cached = _cached_tdlib_file_preview(telegram_id=telegram_id, unique_id=unique_id)
+    if cached is None:
+        return None
+
+    path_value = str(cached.get("path") or "").strip()
+    if path_value:
+        path_obj = Path(path_value)
+        if path_obj.exists() and path_obj.is_file():
+            return {
+                "path": str(path_obj),
+                "mimeType": _media_type_for_path(
+                    str(path_obj),
+                    str(cached.get("mimeType") or ""),
+                ),
+            }
+
+    file_id = _int_or_default(cached.get("fileId"), 0)
+    if file_id == 0:
+        return None
+
+    if not _load_tdlib_session_for_account(td_manager, telegram_id, root_path):
+        return None
+
+    td_file = td_manager.request(
+        str(telegram_id),
+        {
+            "@type": "getFile",
+            "file_id": file_id,
+        },
+        timeout_seconds=15.0,
+    )
+    if str(td_file.get("@type") or "") == "error":
+        return None
+
+    local = td_file.get("local") if isinstance(td_file.get("local"), dict) else {}
+    if not bool(local.get("is_downloading_completed")):
+        return None
+
+    resolved_path = str(local.get("path") or "").strip()
+    if not resolved_path:
+        return None
+
+    resolved_obj = Path(resolved_path)
+    if not resolved_obj.exists() or not resolved_obj.is_file():
+        return None
+
+    _cache_tdlib_file_preview(
+        telegram_id=telegram_id,
+        unique_id=unique_id,
+        file_id=file_id,
+        mime_type=str(cached.get("mimeType") or ""),
+        local_path=str(resolved_obj),
+    )
+
+    return {
+        "path": str(resolved_obj),
+        "mimeType": _media_type_for_path(
+            str(resolved_obj),
+            str(cached.get("mimeType") or ""),
+        ),
+    }
+
+
+def _stop_tdlib_download_monitor(
+    *,
+    session_id: str,
+    telegram_id: int,
+    file_id: int,
+) -> None:
+    if file_id <= 0:
+        return
+
+    key = (session_id, telegram_id, file_id)
+    with STATE_LOCK:
+        task = TDLIB_DOWNLOAD_TASKS.pop(key, None)
+        TDLIB_DOWNLOAD_PROGRESS.pop(key, None)
+
+    if task is not None and not task.done():
+        task.cancel()
+
+
+def _tdlib_get_file_payload(
+    td_manager: TdlibAuthManager,
+    *,
+    telegram_id: int,
+    root_path: str,
+    file_id: int,
+) -> dict[str, Any]:
+    if file_id <= 0:
+        raise RuntimeError("File id is required")
+    if not _load_tdlib_session_for_account(td_manager, telegram_id, root_path):
+        raise RuntimeError("TDLib is not ready yet. Please try again.")
+
+    result = td_manager.request(
+        str(telegram_id),
+        {
+            "@type": "getFile",
+            "file_id": file_id,
+        },
+        timeout_seconds=15.0,
+    )
+    if str(result.get("@type") or "") == "error":
+        raise RuntimeError(str(result.get("message") or "File not found"))
+    return result
+
+
+def _tdlib_cancel_download_fallback(
+    td_manager: TdlibAuthManager,
+    *,
+    telegram_id: int,
+    root_path: str,
+    file_id: int,
+    unique_id: str,
+) -> dict[str, Any]:
+    resolved_file_id, resolved_unique_id = _resolve_tdlib_file_reference(
+        telegram_id=telegram_id,
+        file_id=file_id,
+        unique_id=unique_id,
+    )
+    if resolved_file_id <= 0:
+        raise RuntimeError("File not found")
+
+    if not _load_tdlib_session_for_account(td_manager, telegram_id, root_path):
+        raise RuntimeError("TDLib is not ready yet. Please try again.")
+
+    cancel_result = td_manager.request(
+        str(telegram_id),
+        {
+            "@type": "cancelDownloadFile",
+            "file_id": resolved_file_id,
+            "only_if_pending": False,
+        },
+        timeout_seconds=20.0,
+    )
+    if str(cancel_result.get("@type") or "") == "error":
+        raise RuntimeError(
+            str(cancel_result.get("message") or "Failed to cancel download")
+        )
+
+    current = _tdlib_get_file_payload(
+        td_manager,
+        telegram_id=telegram_id,
+        root_path=root_path,
+        file_id=resolved_file_id,
+    )
+    remote = current.get("remote") if isinstance(current.get("remote"), dict) else {}
+    resolved_unique_id = (
+        str(remote.get("unique_id") or "").strip() or resolved_unique_id
+    )
+    _cache_tdlib_file_preview(
+        telegram_id=telegram_id,
+        unique_id=resolved_unique_id,
+        file_id=resolved_file_id,
+    )
+    if unique_id.strip() and unique_id.strip() != resolved_unique_id:
+        _cache_tdlib_file_preview(
+            telegram_id=telegram_id,
+            unique_id=unique_id.strip(),
+            file_id=resolved_file_id,
+        )
+
+    return {
+        "fileId": resolved_file_id,
+        "uniqueId": resolved_unique_id,
+        "downloadStatus": "idle",
+        "localPath": "",
+        "completionDate": 0,
+        "downloadedSize": 0,
+        "transferStatus": "idle",
+    }
+
+
+def _tdlib_toggle_pause_download_fallback(
+    td_manager: TdlibAuthManager,
+    *,
+    telegram_id: int,
+    root_path: str,
+    file_id: int,
+    unique_id: str,
+    is_paused: bool | None,
+) -> tuple[dict[str, Any], bool]:
+    resolved_file_id, resolved_unique_id = _resolve_tdlib_file_reference(
+        telegram_id=telegram_id,
+        file_id=file_id,
+        unique_id=unique_id,
+    )
+    if resolved_file_id <= 0:
+        raise RuntimeError("File not found")
+
+    current = _tdlib_get_file_payload(
+        td_manager,
+        telegram_id=telegram_id,
+        root_path=root_path,
+        file_id=resolved_file_id,
+    )
+    local = current.get("local") if isinstance(current.get("local"), dict) else {}
+    currently_downloading = bool(local.get("is_downloading_active"))
+    target_pause = is_paused if is_paused is not None else currently_downloading
+
+    if target_pause:
+        action_result = td_manager.request(
+            str(telegram_id),
+            {
+                "@type": "cancelDownloadFile",
+                "file_id": resolved_file_id,
+                "only_if_pending": False,
+            },
+            timeout_seconds=20.0,
+        )
+        if str(action_result.get("@type") or "") == "error":
+            raise RuntimeError(
+                str(action_result.get("message") or "Failed to pause download")
+            )
+
+        refreshed = _tdlib_get_file_payload(
+            td_manager,
+            telegram_id=telegram_id,
+            root_path=root_path,
+            file_id=resolved_file_id,
+        )
+        payload = _td_status_payload_from_td_file(
+            refreshed,
+            telegram_id=telegram_id,
+            fallback_unique_id=resolved_unique_id,
+        )
+        if payload["downloadStatus"] not in {"completed", "downloading"}:
+            payload["downloadStatus"] = (
+                "paused"
+                if _int_or_default(payload.get("downloadedSize"), 0) > 0
+                else "idle"
+            )
+        return payload, False
+
+    action_result = td_manager.request(
+        str(telegram_id),
+        {
+            "@type": "downloadFile",
+            "file_id": resolved_file_id,
+            "priority": 16,
+            "offset": 0,
+            "limit": 0,
+            "synchronous": False,
+        },
+        timeout_seconds=20.0,
+    )
+    if str(action_result.get("@type") or "") == "error":
+        raise RuntimeError(
+            str(action_result.get("message") or "Failed to resume download")
+        )
+
+    refreshed = _tdlib_get_file_payload(
+        td_manager,
+        telegram_id=telegram_id,
+        root_path=root_path,
+        file_id=resolved_file_id,
+    )
+    payload = _td_status_payload_from_td_file(
+        refreshed,
+        telegram_id=telegram_id,
+        fallback_unique_id=resolved_unique_id,
+    )
+    if payload["downloadStatus"] != "completed":
+        payload["downloadStatus"] = "downloading"
+    return payload, True
+
+
+def _tdlib_remove_file_fallback(
+    td_manager: TdlibAuthManager,
+    *,
+    telegram_id: int,
+    root_path: str,
+    file_id: int,
+    unique_id: str,
+) -> dict[str, Any]:
+    resolved_file_id, resolved_unique_id = _resolve_tdlib_file_reference(
+        telegram_id=telegram_id,
+        file_id=file_id,
+        unique_id=unique_id,
+    )
+    if resolved_file_id <= 0 and not resolved_unique_id:
+        raise RuntimeError("File not found")
+
+    if not _load_tdlib_session_for_account(td_manager, telegram_id, root_path):
+        raise RuntimeError("TDLib is not ready yet. Please try again.")
+
+    if resolved_file_id > 0:
+        td_manager.request(
+            str(telegram_id),
+            {
+                "@type": "cancelDownloadFile",
+                "file_id": resolved_file_id,
+                "only_if_pending": False,
+            },
+            timeout_seconds=20.0,
+        )
+        td_manager.request(
+            str(telegram_id),
+            {
+                "@type": "deleteFile",
+                "file_id": resolved_file_id,
+            },
+            timeout_seconds=20.0,
+        )
+
+    _evict_tdlib_file_preview(
+        telegram_id=telegram_id,
+        unique_id=resolved_unique_id or unique_id,
+        file_id=resolved_file_id,
+    )
+
+    return {
+        "fileId": resolved_file_id,
+        "uniqueId": resolved_unique_id or unique_id,
+        "downloadStatus": "idle",
+        "localPath": "",
+        "completionDate": 0,
+        "downloadedSize": 0,
+        "transferStatus": "idle",
+        "removed": True,
     }
 
 
@@ -1024,6 +1646,26 @@ async def _monitor_tdlib_download(
                 _int_or_default(td_file.get("size"), 0),
                 _int_or_default(td_file.get("expected_size"), 0),
             )
+            remote_raw = (
+                td_file.get("remote") if isinstance(td_file.get("remote"), dict) else {}
+            )
+            resolved_unique_id = (
+                str(remote_raw.get("unique_id") or "").strip() or unique_id
+            )
+            _cache_tdlib_file_preview(
+                telegram_id=telegram_id,
+                unique_id=resolved_unique_id,
+                file_id=file_id,
+                local_path=str(status_payload.get("localPath") or "").strip() or None,
+            )
+            if unique_id.strip() and unique_id.strip() != resolved_unique_id:
+                _cache_tdlib_file_preview(
+                    telegram_id=telegram_id,
+                    unique_id=unique_id,
+                    file_id=file_id,
+                    local_path=str(status_payload.get("localPath") or "").strip()
+                    or None,
+                )
 
             await _emit_ws_payload(
                 _build_ws_payload(EVENT_TYPE_FILE_UPDATE, {"file": ws_file}),
@@ -1183,6 +1825,31 @@ def _start_tdlib_download_for_message(
             file_payload["completionDate"] = int(time.time() * 1000)
     else:
         file_payload["downloadStatus"] = "downloading"
+
+    remote_raw = (
+        td_file.get("remote") if isinstance(td_file.get("remote"), dict) else {}
+    )
+    remote_unique_id = str(remote_raw.get("unique_id") or "").strip()
+    payload_unique_id = str(file_payload.get("uniqueId") or "").strip()
+    mime_type = str(file_payload.get("mimeType") or "").strip()
+    local_path = str(file_payload.get("localPath") or "").strip()
+
+    if remote_unique_id:
+        _cache_tdlib_file_preview(
+            telegram_id=telegram_id,
+            unique_id=remote_unique_id,
+            file_id=target_file_id,
+            mime_type=mime_type,
+            local_path=local_path or None,
+        )
+    if payload_unique_id and payload_unique_id != remote_unique_id:
+        _cache_tdlib_file_preview(
+            telegram_id=telegram_id,
+            unique_id=payload_unique_id,
+            file_id=target_file_id,
+            mime_type=mime_type,
+            local_path=local_path or None,
+        )
 
     return file_payload
 
@@ -1878,6 +2545,12 @@ async def telegram_chats(
         query=query,
         activated_chat_id=activated_chat_id,
     )
+    automation_map = get_automation_map(db, telegram_id=telegram_id_num)
+    db_chats = _apply_chat_auto_settings(
+        db_chats,
+        telegram_id=telegram_id_num,
+        automation_map=automation_map,
+    )
 
     td_manager = _tdlib_manager_from_app(request.app)
     if td_manager is None:
@@ -1906,7 +2579,12 @@ async def telegram_chats(
         logger.warning("Failed to fetch chats from TDLib: %s", exc)
         return db_chats
 
-    return td_chats if td_chats else db_chats
+    target_chats = td_chats if td_chats else db_chats
+    return _apply_chat_auto_settings(
+        target_chats,
+        telegram_id=telegram_id_num,
+        automation_map=automation_map,
+    )
 
 
 @app.get("/telegram/{telegramId}/download-statistics")
@@ -2057,7 +2735,41 @@ async def telegram_files(
                 content={"error": str(exc)},
             )
 
-    return list_files(db, telegram_id=telegramId, chat_id=chatId, filters=filters)
+    db_result = list_files(db, telegram_id=telegramId, chat_id=chatId, filters=filters)
+    offline_requested = _bool_or_none(filters.get("offline")) is True
+    if offline_requested or _int_or_default(db_result.get("size"), 0) > 0:
+        return db_result
+
+    td_manager = _tdlib_manager_from_app(request.app)
+    if td_manager is None:
+        return db_result
+
+    config: AppConfig = request.app.state.config
+    account = get_telegram_account(
+        db,
+        telegram_id=telegramId,
+        app_root=str(config.app_root),
+    )
+    if account is None:
+        return db_result
+
+    try:
+        return await asyncio.to_thread(
+            _load_tdlib_chat_files,
+            td_manager,
+            telegram_id=telegramId,
+            root_path=str(account.get("rootPath") or ""),
+            chat_id=chatId,
+            filters=filters,
+        )
+    except Exception as exc:
+        logger.warning(
+            "Failed to fetch chat files from TDLib for telegram=%s chat=%s: %s",
+            telegramId,
+            chatId,
+            exc,
+        )
+        return db_result
 
 
 @app.get("/telegram/{telegramId}/chat/{chatId}/files/count")
@@ -2112,9 +2824,10 @@ def file_update_tags(
 
 
 @app.get("/{telegramId}/file/{uniqueId}")
-def file_preview(
+async def file_preview(
     telegramId: int,
     uniqueId: str,
+    request: Request,
     db: sqlite3.Connection = Depends(get_db),
 ) -> FileResponse:
     info = get_file_preview_info(
@@ -2123,7 +2836,41 @@ def file_preview(
         unique_id=uniqueId,
     )
     if info is None:
-        raise HTTPException(status_code=404, detail="File not found")
+        cached = _cached_tdlib_file_preview(telegram_id=telegramId, unique_id=uniqueId)
+        if cached is not None:
+            path_raw = str(cached.get("path") or "").strip()
+            if path_raw:
+                path_obj = Path(path_raw)
+                if path_obj.exists() and path_obj.is_file():
+                    return FileResponse(
+                        path=str(path_obj),
+                        media_type=_media_type_for_path(
+                            str(path_obj), str(cached.get("mimeType") or "")
+                        ),
+                    )
+
+        td_manager = _tdlib_manager_from_app(request.app)
+        if td_manager is not None:
+            config: AppConfig = request.app.state.config
+            account = get_telegram_account(
+                db,
+                telegram_id=telegramId,
+                app_root=str(config.app_root),
+            )
+            if account is not None:
+                try:
+                    info = await asyncio.to_thread(
+                        _resolve_tdlib_preview_info,
+                        td_manager,
+                        telegram_id=telegramId,
+                        root_path=str(account.get("rootPath") or ""),
+                        unique_id=uniqueId,
+                    )
+                except Exception:
+                    info = None
+
+        if info is None:
+            raise HTTPException(status_code=404, detail="File not found")
 
     path = Path(str(info["path"]))
     if not path.exists() or not path.is_file():
@@ -2232,9 +2979,39 @@ async def file_cancel_download_route(
         unique_id=str(payload.get("uniqueId") or "").strip() or None,
     )
     if result is None:
-        raise HTTPException(status_code=404, detail="File not found")
+        td_manager = _tdlib_manager_from_app(request.app)
+        if td_manager is None:
+            raise HTTPException(status_code=404, detail="File not found")
+
+        config: AppConfig = request.app.state.config
+        account = get_telegram_account(
+            db,
+            telegram_id=telegramId,
+            app_root=str(config.app_root),
+        )
+        if account is None:
+            raise HTTPException(status_code=404, detail="File not found")
+
+        unique_id = str(payload.get("uniqueId") or "").strip()
+        try:
+            result = await asyncio.to_thread(
+                _tdlib_cancel_download_fallback,
+                td_manager,
+                telegram_id=telegramId,
+                root_path=str(account.get("rootPath") or ""),
+                file_id=file_id,
+                unique_id=unique_id,
+            )
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     session_id = _session_id_from_request(request)
+    _stop_tdlib_download_monitor(
+        session_id=session_id,
+        telegram_id=telegramId,
+        file_id=file_id,
+    )
+    await _emit_tdlib_download_aggregate(session_id=session_id, telegram_id=telegramId)
     await _emit_ws_payload(
         _build_ws_payload(EVENT_TYPE_FILE_STATUS, result),
         session_id=session_id,
@@ -2261,7 +3038,57 @@ async def file_toggle_pause_download_route(
         unique_id=str(payload.get("uniqueId") or "").strip() or None,
     )
     if result is None:
-        raise HTTPException(status_code=404, detail="File not found")
+        td_manager = _tdlib_manager_from_app(request.app)
+        if td_manager is None:
+            raise HTTPException(status_code=404, detail="File not found")
+
+        config: AppConfig = request.app.state.config
+        account = get_telegram_account(
+            db,
+            telegram_id=telegramId,
+            app_root=str(config.app_root),
+        )
+        if account is None:
+            raise HTTPException(status_code=404, detail="File not found")
+
+        unique_id = str(payload.get("uniqueId") or "").strip()
+        try:
+            result, should_monitor = await asyncio.to_thread(
+                _tdlib_toggle_pause_download_fallback,
+                td_manager,
+                telegram_id=telegramId,
+                root_path=str(account.get("rootPath") or ""),
+                file_id=file_id,
+                unique_id=unique_id,
+                is_paused=_bool_or_none(payload.get("isPaused")),
+            )
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        session_id = _session_id_from_request(request)
+        if should_monitor:
+            _ensure_tdlib_download_monitor(
+                request.app,
+                session_id=session_id,
+                telegram_id=telegramId,
+                file_id=file_id,
+                unique_id=str(result.get("uniqueId") or unique_id),
+            )
+        else:
+            _stop_tdlib_download_monitor(
+                session_id=session_id,
+                telegram_id=telegramId,
+                file_id=file_id,
+            )
+            await _emit_tdlib_download_aggregate(
+                session_id=session_id,
+                telegram_id=telegramId,
+            )
+        await _emit_ws_payload(
+            _build_ws_payload(EVENT_TYPE_FILE_STATUS, result),
+            session_id=session_id,
+        )
+        return Response(status_code=200)
 
     session_id = _session_id_from_request(request)
     await _emit_ws_payload(
@@ -2290,9 +3117,38 @@ async def file_remove_route(
         unique_id=unique_id or None,
     )
     if result is None:
-        raise HTTPException(status_code=404, detail="File not found")
+        td_manager = _tdlib_manager_from_app(request.app)
+        if td_manager is None:
+            raise HTTPException(status_code=404, detail="File not found")
+
+        config: AppConfig = request.app.state.config
+        account = get_telegram_account(
+            db,
+            telegram_id=telegramId,
+            app_root=str(config.app_root),
+        )
+        if account is None:
+            raise HTTPException(status_code=404, detail="File not found")
+
+        try:
+            result = await asyncio.to_thread(
+                _tdlib_remove_file_fallback,
+                td_manager,
+                telegram_id=telegramId,
+                root_path=str(account.get("rootPath") or ""),
+                file_id=file_id,
+                unique_id=unique_id,
+            )
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     session_id = _session_id_from_request(request)
+    _stop_tdlib_download_monitor(
+        session_id=session_id,
+        telegram_id=telegramId,
+        file_id=file_id,
+    )
+    await _emit_tdlib_download_aggregate(session_id=session_id, telegram_id=telegramId)
     await _emit_ws_payload(
         _build_ws_payload(EVENT_TYPE_FILE_STATUS, result),
         session_id=session_id,

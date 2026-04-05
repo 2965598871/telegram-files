@@ -52,8 +52,13 @@ export async function request<T = any>(
     throw new RequestParsedError(responseText);
   }
   if (!response.ok) {
+    const errorMessage =
+      data?.error ??
+      data?.detail ??
+      data?.message ??
+      `Request failed with status ${response.status}`;
     throw new Error(
-      data.error ?? `Request failed with status ${response.status}`,
+      `${errorMessage} (${requestInit?.method ?? "GET"} ${api})`,
     );
   }
 

@@ -875,6 +875,19 @@ def _load_automation_map(
     return result
 
 
+def get_automation_map(
+    conn: sqlite3.Connection,
+    *,
+    telegram_id: int | None = None,
+) -> dict[tuple[int, int], dict[str, Any]]:
+    source = _load_automation_map(conn)
+    if telegram_id is None:
+        return deepcopy(source)
+    return {
+        key: deepcopy(value) for key, value in source.items() if key[0] == telegram_id
+    }
+
+
 def list_telegrams(
     conn: sqlite3.Connection, app_root: str, authorized: bool | None
 ) -> list[dict[str, Any]]:

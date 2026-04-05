@@ -35,3 +35,9 @@ pyapi/**/__pycache__/
 *.binlog
 
 .env
+
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.webp
