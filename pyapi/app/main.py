@@ -1013,7 +1013,11 @@ async def telegram_files(
         return db_result
 
     if _int_or_default(db_result.get("size"), 0) > 0:
-        can_try_enrichment = _int_or_default(filters.get("fromMessageId"), 0) == 0
+        has_search = bool((filters.get("search") or "").strip())
+        can_try_enrichment = (
+            _int_or_default(filters.get("fromMessageId"), 0) == 0
+            and not has_search
+        )
         if can_try_enrichment:
             td_manager = _tdlib_manager_from_app(request.app)
             if td_manager is not None:

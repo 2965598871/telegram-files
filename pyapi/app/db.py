@@ -82,6 +82,15 @@ def init_schema(conn: sqlite3.Connection) -> None:
             timestamp  BIGINT,
             data       TEXT
         );
+
+        CREATE INDEX IF NOT EXISTS idx_file_record_chat
+            ON file_record (telegram_id, chat_id, type, message_id DESC);
+
+        CREATE INDEX IF NOT EXISTS idx_file_record_album
+            ON file_record (telegram_id, chat_id, media_album_id, type);
+
+        CREATE INDEX IF NOT EXISTS idx_file_record_unique
+            ON file_record (telegram_id, unique_id);
         """
     )
     conn.commit()
@@ -274,14 +283,13 @@ def list_files(
     search = (filters.get("search") or "").strip()
     if search:
         where_clauses.append(
-            "(file_name LIKE ? OR caption LIKE ? OR EXISTS ("
-            "SELECT 1 FROM file_record AS album_file "
-            "WHERE album_file.telegram_id = file_record.telegram_id "
-            "AND album_file.chat_id = file_record.chat_id "
-            "AND album_file.media_album_id = file_record.media_album_id "
-            "AND album_file.media_album_id != 0 "
-            "AND album_file.type != 'thumbnail' "
-            "AND album_file.caption LIKE ?))"
+            "(file_name LIKE ? OR caption LIKE ? OR ("
+            "media_album_id != 0 AND media_album_id IN ("
+            "SELECT a.media_album_id FROM file_record AS a "
+            "WHERE a.telegram_id = file_record.telegram_id "
+            "AND a.chat_id = file_record.chat_id "
+            "AND a.type != 'thumbnail' "
+            "AND a.caption LIKE ?)))"
         )
         params.append(f"%{search}%")
         params.append(f"%{search}%")
