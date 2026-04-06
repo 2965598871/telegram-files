@@ -1,20 +1,15 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import secrets
 import sqlite3
 import os
 import time
 from copy import deepcopy
-from collections import deque
 from pathlib import Path
 from contextlib import asynccontextmanager
-from dataclasses import dataclass
-from threading import Lock
 from typing import Any
-from urllib.parse import unquote
 from uuid import uuid4
 
 from fastapi import (
@@ -33,19 +28,56 @@ from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from .automation_workers import (
     WorkerDeps,
     background_workers_loop as _background_workers_loop,
-    queue_transfer_candidate as _queue_transfer_candidate,
     reset_worker_state as _reset_worker_state,
 )
+from .app_state import (
+    AUTHENTICATION_METHODS,
+    EVENT_TYPE_AUTHORIZATION,
+    EVENT_TYPE_FILE_STATUS,
+    EVENT_TYPE_METHOD_RESULT,
+    PENDING_TELEGRAMS,
+    SESSION_COOKIE_NAME,
+    SESSION_TELEGRAM_SELECTION,
+    STATE_LOCK,
+    TELEGRAM_CONSTRUCTOR_STATE_READY,
+    TELEGRAM_CONSTRUCTOR_WAIT_PHONE_NUMBER,
+    PendingTelegramAccount,
+    _auth_state,
+    _build_ws_payload,
+    _emit_ws_payload,
+    _handle_tdlib_authorization_state,
+    _is_pending_account,
+    _pending_account_to_response,
+    _recover_auth_selection,
+    _remove_pending_account,
+    _selected_telegram_id,
+    _session_id_from_request,
+    _tdlib_error_hint,
+    _tdlib_manager_from_app,
+    register_ws_connection,
+    unregister_ws_connection,
+    update_session_selection,
+)
 from .config import AppConfig
+from .download_runtime import (
+    _apply_chat_auto_settings,
+    _avg_speed_interval,
+    _db_update_tdlib_file_status,
+    _emit_tdlib_download_aggregate,
+    _ensure_tdlib_download_monitor,
+    _live_speed_stats,
+    _persist_speed_statistics,
+    _stop_tdlib_download_monitor,
+    _td_file_status_payload,
+    _tdlib_account_root_path,
+    reset_speed_state,
+)
 from .file_record_ops import (
-    file_for_transfer as _db_file_for_transfer,
-    update_tdlib_file_status as _update_tdlib_file_status,
     upsert_tdlib_file_record as _db_upsert_tdlib_file_record,
 )
 from .db import (
     count_files_by_type,
     cancel_file_download,
-    create_telegram_account,
     create_connection,
     delete_telegram,
     get_file_preview_info,
@@ -65,8 +97,18 @@ from .db import (
     toggle_pause_file_download,
     update_file_tags,
     update_files_tags,
+    update_auto_settings,
     update_telegram_proxy,
     upsert_settings,
+)
+from .route_utils import (
+    _bool_or_none,
+    _file_status_from_file_record,
+    _get_filters,
+    _int_or_default,
+    _method_error,
+    _parse_batch_files,
+    _to_telegram_id,
 )
 from .settings_keys import default_value_for
 from .tdlib import (
@@ -79,7 +121,6 @@ from .tdlib_payloads import (
     build_tdlib_method_payload as _build_tdlib_method_payload,
 )
 from .tdlib_queries import (
-    default_chat_auto as _default_chat_auto,
     load_tdlib_chat_files as _load_tdlib_chat_files,
     load_tdlib_chat_files_count as _load_tdlib_chat_files_count,
     load_tdlib_chats as _load_tdlib_chats,
@@ -99,31 +140,8 @@ from .tdlib_downloads import (
     tdlib_remove_file_fallback as _tdlib_remove_file_fallback,
     tdlib_toggle_pause_download_fallback as _tdlib_toggle_pause_download_fallback,
 )
-from .tdlib_monitor import (
-    TdlibMonitorDeps,
-    emit_tdlib_download_aggregate as _emit_tdlib_download_aggregate_impl,
-    ensure_tdlib_download_monitor as _ensure_tdlib_download_monitor_impl,
-    reset_tdlib_monitor_state as _reset_tdlib_monitor_state,
-    stop_tdlib_download_monitor as _stop_tdlib_download_monitor_impl,
-)
+from .tdlib_monitor import reset_tdlib_monitor_state as _reset_tdlib_monitor_state
 
-
-SESSION_COOKIE_NAME = "tf"
-
-EVENT_TYPE_ERROR = -1
-EVENT_TYPE_AUTHORIZATION = 1
-EVENT_TYPE_METHOD_RESULT = 2
-EVENT_TYPE_FILE_UPDATE = 3
-EVENT_TYPE_FILE_DOWNLOAD = 4
-EVENT_TYPE_FILE_STATUS = 5
-
-SPEED_INTERVAL_CACHE_TTL_SECONDS = 5.0
-
-TELEGRAM_CONSTRUCTOR_STATE_READY = -1834871737
-TELEGRAM_CONSTRUCTOR_WAIT_PHONE_NUMBER = 306402531
-TELEGRAM_CONSTRUCTOR_WAIT_CODE = 52643073
-TELEGRAM_CONSTRUCTOR_WAIT_PASSWORD = 112238030
-TELEGRAM_CONSTRUCTOR_WAIT_OTHER_DEVICE_CONFIRMATION = 860166378
 
 SUPPORTED_TELEGRAM_METHODS: dict[str, dict[str, Any]] = {
     "SetAuthenticationPhoneNumber": {
@@ -149,174 +167,7 @@ SUPPORTED_TELEGRAM_METHODS: dict[str, dict[str, Any]] = {
     },
 }
 
-AUTHENTICATION_METHODS = {
-    "SetAuthenticationPhoneNumber",
-    "CheckAuthenticationCode",
-    "CheckAuthenticationPassword",
-    "RequestQrCodeAuthentication",
-}
-
-TDLIB_AUTH_STATE_TO_CONSTRUCTOR = {
-    "authorizationStateWaitPhoneNumber": TELEGRAM_CONSTRUCTOR_WAIT_PHONE_NUMBER,
-    "authorizationStateWaitCode": TELEGRAM_CONSTRUCTOR_WAIT_CODE,
-    "authorizationStateWaitPassword": TELEGRAM_CONSTRUCTOR_WAIT_PASSWORD,
-    "authorizationStateWaitOtherDeviceConfirmation": TELEGRAM_CONSTRUCTOR_WAIT_OTHER_DEVICE_CONFIRMATION,
-    "authorizationStateReady": TELEGRAM_CONSTRUCTOR_STATE_READY,
-}
-
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class PendingTelegramAccount:
-    id: str
-    name: str
-    root_path: str
-    proxy: str | None
-    phone_number: str
-    last_authorization_state: dict[str, Any]
-
-
-STATE_LOCK = Lock()
-PENDING_TELEGRAMS: dict[str, PendingTelegramAccount] = {}
-SESSION_TELEGRAM_SELECTION: dict[str, str] = {}
-WS_CONNECTIONS: dict[str, set[WebSocket]] = {}
-SPEED_TRACKERS: dict[int, "AvgSpeedTracker"] = {}
-SPEED_TOTAL_DOWNLOADED: dict[int, int] = {}
-SPEED_LAST_FILE_DOWNLOADED: dict[tuple[int, int], int] = {}
-SPEED_INTERVAL_CACHE_VALUE = 5 * 60
-SPEED_INTERVAL_CACHE_AT = 0.0
-
-
-class AvgSpeedTracker:
-    def __init__(self, interval_seconds: int, smoothing_window_size: int = 6) -> None:
-        self.interval_seconds = max(1, int(interval_seconds))
-        self.smoothing_window_size = max(2, int(smoothing_window_size))
-        self._speed_points: deque[tuple[int, int, int]] = deque()
-
-    def set_interval(self, interval_seconds: int) -> None:
-        self.interval_seconds = max(1, int(interval_seconds))
-
-    def update(self, downloaded_size: int, timestamp_ms: int) -> None:
-        if downloaded_size <= 0:
-            self._remove_old_points(timestamp_ms)
-            return
-
-        speed = self._calculate_instant_speed(downloaded_size, timestamp_ms)
-        if len(self._speed_points) >= self.smoothing_window_size:
-            speed = self._smooth_speed(speed)
-
-        self._speed_points.append((downloaded_size, speed, timestamp_ms))
-        self._remove_old_points(timestamp_ms)
-
-    def speed_stats(self) -> dict[str, int]:
-        return {
-            "interval": self.interval_seconds,
-            "avgSpeed": self._avg_speed(),
-            "medianSpeed": self._median_speed(),
-            "maxSpeed": self._max_speed(),
-            "minSpeed": self._min_speed(),
-        }
-
-    def _remove_old_points(self, timestamp_ms: int) -> None:
-        cutoff = timestamp_ms - (self.interval_seconds * 1000)
-        while self._speed_points and self._speed_points[0][2] < cutoff:
-            self._speed_points.popleft()
-
-    def _recent_points(self, size: int) -> list[tuple[int, int, int]]:
-        if size <= 0:
-            return []
-        return list(self._speed_points)[-size:]
-
-    def _calculate_instant_speed(self, current_size: int, current_time_ms: int) -> int:
-        if not self._speed_points:
-            return 0
-
-        points_to_consider = min(self.smoothing_window_size, len(self._speed_points))
-        recent_points = self._recent_points(points_to_consider)
-        if not recent_points:
-            return 0
-
-        earliest = recent_points[0]
-        time_diff = current_time_ms - earliest[2]
-        if time_diff <= 0:
-            return 0
-
-        bytes_diff = current_size - earliest[0]
-        if bytes_diff < 0:
-            bytes_diff = current_size
-
-        return int((bytes_diff * 1000) / time_diff)
-
-    def _smooth_speed(self, current_speed: int) -> int:
-        if not self._speed_points:
-            return current_speed
-
-        recent = self._recent_points(self.smoothing_window_size)
-        recent_speeds = [point[1] for point in recent]
-        recent_speeds.append(current_speed)
-        if len(recent_speeds) < 2:
-            return current_speed
-
-        mean = sum(recent_speeds) / float(len(recent_speeds))
-        variance = sum((speed - mean) ** 2 for speed in recent_speeds) / float(
-            len(recent_speeds)
-        )
-        standard_deviation = variance**0.5
-
-        lower = mean - (3 * standard_deviation)
-        upper = mean + (3 * standard_deviation)
-        filtered = [speed for speed in recent_speeds if lower <= speed <= upper]
-        if not filtered:
-            return current_speed
-
-        weighted_sum = 0.0
-        total_weight = 0.0
-        size = len(filtered)
-        for idx, speed in enumerate(filtered):
-            weight = (idx + 1.0) / size
-            weighted_sum += speed * weight
-            total_weight += weight
-
-        if total_weight == 0:
-            return current_speed
-        return int(weighted_sum / total_weight)
-
-    def _avg_speed(self) -> int:
-        if len(self._speed_points) < 2:
-            return 0
-
-        first = self._speed_points[0]
-        last = self._speed_points[-1]
-        time_diff = last[2] - first[2]
-        if time_diff <= 0:
-            return 0
-
-        bytes_downloaded = last[0] - first[0]
-        if bytes_downloaded < 0:
-            bytes_downloaded = last[0]
-
-        return int((bytes_downloaded * 1000) / time_diff)
-
-    def _median_speed(self) -> int:
-        if len(self._speed_points) < 2:
-            return 0
-
-        speeds = sorted(point[1] for point in self._speed_points if point[1] > 0)
-        if not speeds:
-            return 0
-        return int(speeds[len(speeds) // 2])
-
-    def _max_speed(self) -> int:
-        if not self._speed_points:
-            return 0
-        return int(max(point[1] for point in self._speed_points))
-
-    def _min_speed(self) -> int:
-        positive = [point[1] for point in self._speed_points if point[1] > 0]
-        if not positive:
-            return 0
-        return int(min(positive))
 
 
 @asynccontextmanager
@@ -358,12 +209,7 @@ async def lifespan(app: FastAPI):
     app.state.tdlib_error = tdlib_error
     _reset_worker_state()
     _reset_tdlib_monitor_state()
-    SPEED_TRACKERS.clear()
-    SPEED_TOTAL_DOWNLOADED.clear()
-    SPEED_LAST_FILE_DOWNLOADED.clear()
-    global SPEED_INTERVAL_CACHE_VALUE, SPEED_INTERVAL_CACHE_AT
-    SPEED_INTERVAL_CACHE_VALUE = 5 * 60
-    SPEED_INTERVAL_CACHE_AT = 0.0
+    reset_speed_state()
 
     async def _emit_worker_file_status(payload: dict[str, Any]) -> None:
         await _emit_ws_payload(
@@ -435,728 +281,6 @@ async def ensure_session_cookie(request: Request, call_next):
     return response
 
 
-def _auth_state(constructor: int, **extra: Any) -> dict[str, Any]:
-    payload = {"constructor": constructor}
-    payload.update(extra)
-    return payload
-
-
-def _build_ws_payload(
-    event_type: int,
-    data: Any,
-    code: str | None = None,
-) -> dict[str, Any]:
-    return {
-        "type": event_type,
-        "code": code,
-        "data": data,
-        "timestamp": int(time.time() * 1000),
-    }
-
-
-def _session_id_from_request(request: Request) -> str:
-    state_session = getattr(request.state, "session_id", None)
-    if state_session:
-        return str(state_session)
-    cookie_session = request.cookies.get(SESSION_COOKIE_NAME)
-    if cookie_session:
-        return str(cookie_session)
-    return uuid4().hex
-
-
-def _selected_telegram_id(session_id: str) -> str | None:
-    with STATE_LOCK:
-        return SESSION_TELEGRAM_SELECTION.get(session_id)
-
-
-def _recover_auth_selection(session_id: str, method: str) -> str | None:
-    if method not in AUTHENTICATION_METHODS:
-        return None
-
-    with STATE_LOCK:
-        if session_id in SESSION_TELEGRAM_SELECTION:
-            return SESSION_TELEGRAM_SELECTION[session_id]
-
-        pending_ids = list(PENDING_TELEGRAMS.keys())
-        if len(pending_ids) != 1:
-            return None
-
-        recovered_id = pending_ids[0]
-        SESSION_TELEGRAM_SELECTION[session_id] = recovered_id
-        return recovered_id
-
-
-def _tdlib_manager_from_app(app: FastAPI) -> TdlibAuthManager | None:
-    manager = getattr(app.state, "tdlib_manager", None)
-    if isinstance(manager, TdlibAuthManager):
-        return manager
-    return None
-
-
-def _tdlib_error_hint(app: FastAPI) -> str:
-    reason = str(getattr(app.state, "tdlib_error", "") or "").strip()
-    if reason:
-        return reason
-    return "TDLib auth is not configured."
-
-
-def _normalize_tdlib_authorization_state(
-    td_state: dict[str, Any],
-) -> dict[str, Any] | None:
-    state_type = str(td_state.get("@type") or "")
-    constructor = TDLIB_AUTH_STATE_TO_CONSTRUCTOR.get(state_type)
-    if constructor is None:
-        return None
-
-    normalized = _auth_state(constructor)
-    if state_type == "authorizationStateWaitOtherDeviceConfirmation":
-        normalized["link"] = str(td_state.get("link") or "")
-    if state_type == "authorizationStateWaitCode":
-        code_info = td_state.get("code_info")
-        if isinstance(code_info, dict):
-            normalized["phoneNumber"] = str(code_info.get("phone_number") or "")
-    return normalized
-
-
-def _display_name_from_td_me(payload: dict[str, Any]) -> str | None:
-    first_name = str(payload.get("first_name") or "").strip()
-    last_name = str(payload.get("last_name") or "").strip()
-    if first_name and last_name:
-        return f"{first_name} {last_name}".strip()
-    if first_name:
-        return first_name
-    if last_name:
-        return last_name
-    return None
-
-
-def _decode_link_value(value: str) -> str:
-    current = value.strip()
-    if not current:
-        return ""
-
-    for _ in range(3):
-        decoded = unquote(current)
-        if decoded == current:
-            break
-        current = decoded
-    return current
-
-
-def _avg_speed_interval(db: sqlite3.Connection) -> int:
-    global SPEED_INTERVAL_CACHE_VALUE, SPEED_INTERVAL_CACHE_AT
-
-    now = time.monotonic()
-    with STATE_LOCK:
-        cached_value = SPEED_INTERVAL_CACHE_VALUE
-        cached_at = SPEED_INTERVAL_CACHE_AT
-
-    if now - cached_at <= SPEED_INTERVAL_CACHE_TTL_SECONDS:
-        return cached_value
-
-    raw = get_settings_by_keys(db, ["avgSpeedInterval"]).get("avgSpeedInterval")
-    parsed = _int_or_default(raw, 5 * 60)
-    if parsed <= 0:
-        parsed = 5 * 60
-
-    with STATE_LOCK:
-        SPEED_INTERVAL_CACHE_VALUE = parsed
-        SPEED_INTERVAL_CACHE_AT = now
-
-    return parsed
-
-
-def _live_speed_stats(
-    db: sqlite3.Connection,
-    *,
-    telegram_id: int,
-) -> dict[str, int]:
-    interval = _avg_speed_interval(db)
-    now_ms = int(time.time() * 1000)
-
-    with STATE_LOCK:
-        tracker = SPEED_TRACKERS.get(telegram_id)
-        if tracker is None:
-            return {
-                "interval": interval,
-                "avgSpeed": 0,
-                "medianSpeed": 0,
-                "maxSpeed": 0,
-                "minSpeed": 0,
-            }
-        tracker.set_interval(interval)
-        tracker.update(0, now_ms)
-        return tracker.speed_stats()
-
-
-def _update_speed_tracker(
-    db: sqlite3.Connection,
-    *,
-    telegram_id: int,
-    file_id: int,
-    downloaded_size: int,
-    timestamp_ms: int,
-) -> None:
-    if telegram_id <= 0 or file_id <= 0:
-        return
-
-    interval = _avg_speed_interval(db)
-    key = (telegram_id, file_id)
-    normalized_downloaded = max(0, downloaded_size)
-
-    with STATE_LOCK:
-        tracker = SPEED_TRACKERS.get(telegram_id)
-        if tracker is None:
-            tracker = AvgSpeedTracker(interval)
-            SPEED_TRACKERS[telegram_id] = tracker
-        else:
-            tracker.set_interval(interval)
-
-        previous = SPEED_LAST_FILE_DOWNLOADED.get(key)
-        if previous is None:
-            SPEED_LAST_FILE_DOWNLOADED[key] = normalized_downloaded
-            SPEED_TOTAL_DOWNLOADED[telegram_id] = (
-                SPEED_TOTAL_DOWNLOADED.get(telegram_id, 0) + normalized_downloaded
-            )
-        else:
-            delta = normalized_downloaded - previous
-            if delta < 0:
-                delta = normalized_downloaded
-            if delta > 0:
-                SPEED_TOTAL_DOWNLOADED[telegram_id] = (
-                    SPEED_TOTAL_DOWNLOADED.get(telegram_id, 0) + delta
-                )
-            SPEED_LAST_FILE_DOWNLOADED[key] = normalized_downloaded
-
-        tracker.update(SPEED_TOTAL_DOWNLOADED.get(telegram_id, 0), timestamp_ms)
-
-
-def _clear_speed_tracker_file(
-    *,
-    telegram_id: int,
-    file_id: int,
-) -> None:
-    if telegram_id <= 0 or file_id <= 0:
-        return
-    with STATE_LOCK:
-        SPEED_LAST_FILE_DOWNLOADED.pop((telegram_id, file_id), None)
-
-
-def _persist_speed_statistics(db: sqlite3.Connection) -> None:
-    interval = _avg_speed_interval(db)
-    now_ms = int(time.time() * 1000)
-
-    with STATE_LOCK:
-        items = list(SPEED_TRACKERS.items())
-
-    rows_to_insert: list[tuple[str, str, int, str]] = []
-    for telegram_id, tracker in items:
-        with STATE_LOCK:
-            tracker.set_interval(interval)
-            tracker.update(0, now_ms)
-            stats = tracker.speed_stats()
-
-        if (
-            stats["avgSpeed"] == 0
-            and stats["medianSpeed"] == 0
-            and stats["maxSpeed"] == 0
-            and stats["minSpeed"] == 0
-        ):
-            continue
-
-        payload = json.dumps(
-            {
-                "avgSpeed": stats["avgSpeed"],
-                "medianSpeed": stats["medianSpeed"],
-                "maxSpeed": stats["maxSpeed"],
-                "minSpeed": stats["minSpeed"],
-            },
-            separators=(",", ":"),
-            ensure_ascii=False,
-        )
-        rows_to_insert.append((str(telegram_id), "speed", now_ms, payload))
-
-    if not rows_to_insert:
-        return
-
-    db.executemany(
-        """
-        INSERT INTO statistic_record(related_id, type, timestamp, data)
-        VALUES(?, ?, ?, ?)
-        """,
-        rows_to_insert,
-    )
-    db.commit()
-
-
-def _db_update_tdlib_file_status(
-    db: sqlite3.Connection,
-    *,
-    telegram_id: int,
-    file_id: int,
-    unique_id: str,
-    status_payload: dict[str, Any],
-) -> None:
-    _update_tdlib_file_status(
-        db,
-        telegram_id=telegram_id,
-        file_id=file_id,
-        unique_id=unique_id,
-        status_payload=status_payload,
-        on_completed=lambda db_conn,
-        completed_telegram_id,
-        completed_unique_id: _queue_transfer_for_completed_file(
-            db_conn,
-            telegram_id=completed_telegram_id,
-            unique_id=completed_unique_id,
-        ),
-    )
-
-
-def _queue_transfer_for_completed_file(
-    db: sqlite3.Connection,
-    *,
-    telegram_id: int,
-    unique_id: str,
-) -> None:
-    if telegram_id <= 0 or not unique_id:
-        return
-
-    row = _db_file_for_transfer(
-        db,
-        telegram_id=telegram_id,
-        unique_id=unique_id,
-    )
-    if row is None:
-        return
-
-    if str(row["download_status"] or "").strip().lower() != "completed":
-        return
-    if str(row["transfer_status"] or "idle").strip().lower() != "idle":
-        return
-    if not str(row["local_path"] or "").strip():
-        return
-
-    chat_id = _int_or_default(row["chat_id"], 0)
-    if chat_id == 0:
-        return
-
-    automations = get_automation_map(db, telegram_id=telegram_id)
-    automation = automations.get((telegram_id, chat_id))
-    if not isinstance(automation, dict):
-        return
-
-    transfer_cfg = automation.get("transfer")
-    if not isinstance(transfer_cfg, dict) or not bool(transfer_cfg.get("enabled")):
-        return
-
-    rule = transfer_cfg.get("rule")
-    if not isinstance(rule, dict) or not str(rule.get("destination") or "").strip():
-        return
-
-    _queue_transfer_candidate(
-        {
-            "id": _int_or_default(row["id"], 0),
-            "uniqueId": unique_id,
-            "telegramId": telegram_id,
-            "chatId": chat_id,
-        }
-    )
-
-
-def _apply_chat_auto_settings(
-    chats: list[dict[str, Any]],
-    *,
-    telegram_id: int,
-    automation_map: dict[tuple[int, int], dict[str, Any]],
-) -> list[dict[str, Any]]:
-    for chat in chats:
-        chat_id = _int_or_default(chat.get("id"), 0)
-        auto = automation_map.get((telegram_id, chat_id))
-        chat["auto"] = (
-            deepcopy(auto) if isinstance(auto, dict) else _default_chat_auto()
-        )
-    return chats
-
-
-def _tdlib_account_root_path(
-    app: FastAPI,
-    db: sqlite3.Connection,
-    telegram_id: int,
-    cache: dict[int, str | None] | None = None,
-) -> str | None:
-    if cache is not None and telegram_id in cache:
-        return cache[telegram_id]
-
-    config: AppConfig = app.state.config
-    account = get_telegram_account(
-        db,
-        telegram_id=telegram_id,
-        app_root=str(config.app_root),
-    )
-    root_path = (
-        str(account.get("rootPath") or "").strip() if isinstance(account, dict) else ""
-    )
-    result = root_path or None
-    if cache is not None:
-        cache[telegram_id] = result
-    return result
-
-
-def _td_file_status_payload(file_record: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "fileId": _int_or_default(file_record.get("id"), 0),
-        "uniqueId": str(file_record.get("uniqueId") or ""),
-        "downloadStatus": str(file_record.get("downloadStatus") or "idle"),
-        "localPath": str(file_record.get("localPath") or ""),
-        "completionDate": _int_or_default(file_record.get("completionDate"), 0),
-        "downloadedSize": _int_or_default(file_record.get("downloadedSize"), 0),
-        "transferStatus": str(file_record.get("transferStatus") or "idle"),
-    }
-
-
-def _tdlib_monitor_deps() -> TdlibMonitorDeps:
-    async def _emit_file_update(
-        session_id: str,
-        payload: dict[str, Any],
-    ) -> None:
-        await _emit_ws_payload(
-            _build_ws_payload(EVENT_TYPE_FILE_UPDATE, payload),
-            session_id=session_id,
-        )
-
-    async def _emit_file_status(
-        session_id: str,
-        payload: dict[str, Any],
-    ) -> None:
-        await _emit_ws_payload(
-            _build_ws_payload(EVENT_TYPE_FILE_STATUS, payload),
-            session_id=session_id,
-        )
-
-    async def _emit_download_aggregate(
-        session_id: str,
-        payload: dict[str, Any],
-    ) -> None:
-        await _emit_ws_payload(
-            _build_ws_payload(EVENT_TYPE_FILE_DOWNLOAD, payload),
-            session_id=session_id,
-        )
-
-    return TdlibMonitorDeps(
-        emit_file_update=_emit_file_update,
-        emit_file_status=_emit_file_status,
-        emit_download_aggregate=_emit_download_aggregate,
-        update_tdlib_file_status=lambda db,
-        telegram_id,
-        file_id,
-        unique_id,
-        status_payload: _db_update_tdlib_file_status(
-            db,
-            telegram_id=telegram_id,
-            file_id=file_id,
-            unique_id=unique_id,
-            status_payload=status_payload,
-        ),
-        update_speed_tracker=lambda db,
-        telegram_id,
-        file_id,
-        downloaded_size,
-        timestamp_ms: _update_speed_tracker(
-            db,
-            telegram_id=telegram_id,
-            file_id=file_id,
-            downloaded_size=downloaded_size,
-            timestamp_ms=timestamp_ms,
-        ),
-        clear_speed_tracker_file=lambda telegram_id, file_id: _clear_speed_tracker_file(
-            telegram_id=telegram_id,
-            file_id=file_id,
-        ),
-    )
-
-
-def _stop_tdlib_download_monitor(
-    *,
-    session_id: str,
-    telegram_id: int,
-    file_id: int,
-) -> None:
-    _stop_tdlib_download_monitor_impl(
-        session_id=session_id,
-        telegram_id=telegram_id,
-        file_id=file_id,
-    )
-
-
-async def _emit_tdlib_download_aggregate(
-    *,
-    session_id: str,
-    telegram_id: int,
-) -> None:
-    await _emit_tdlib_download_aggregate_impl(
-        session_id=session_id,
-        telegram_id=telegram_id,
-        deps=_tdlib_monitor_deps(),
-    )
-
-
-def _ensure_tdlib_download_monitor(
-    app: FastAPI,
-    *,
-    session_id: str,
-    telegram_id: int,
-    file_id: int,
-    unique_id: str,
-) -> None:
-    _ensure_tdlib_download_monitor_impl(
-        app,
-        session_id=session_id,
-        telegram_id=telegram_id,
-        file_id=file_id,
-        unique_id=unique_id,
-        deps=_tdlib_monitor_deps(),
-    )
-
-
-def _int_or_default(value: Any, default: int = 0) -> int:
-    try:
-        if value is None or value == "":
-            return default
-        return int(value)
-    except (TypeError, ValueError):
-        return default
-
-
-async def _emit_ws_payload(
-    payload: dict[str, Any], session_id: str | None = None
-) -> None:
-    with STATE_LOCK:
-        if session_id is not None:
-            targets = list(WS_CONNECTIONS.get(session_id, set()))
-            if not targets:
-                targets = [
-                    ws
-                    for session_connections in WS_CONNECTIONS.values()
-                    for ws in session_connections
-                ]
-        else:
-            targets = [
-                ws
-                for session_connections in WS_CONNECTIONS.values()
-                for ws in session_connections
-            ]
-
-    dead_connections: list[WebSocket] = []
-    for ws in targets:
-        try:
-            await ws.send_json(payload)
-        except Exception:
-            dead_connections.append(ws)
-
-    if not dead_connections:
-        return
-
-    with STATE_LOCK:
-        for dead in dead_connections:
-            for session_connections in WS_CONNECTIONS.values():
-                if dead in session_connections:
-                    session_connections.discard(dead)
-
-
-def _pending_account_to_response(
-    pending: PendingTelegramAccount,
-) -> dict[str, Any]:
-    return {
-        "id": pending.id,
-        "name": pending.name,
-        "phoneNumber": pending.phone_number,
-        "avatar": "",
-        "status": "inactive",
-        "rootPath": pending.root_path,
-        "isPremium": False,
-        "lastAuthorizationState": pending.last_authorization_state,
-        "proxy": pending.proxy,
-    }
-
-
-def _is_pending_account(telegram_id: str) -> bool:
-    with STATE_LOCK:
-        return telegram_id in PENDING_TELEGRAMS
-
-
-def _remove_pending_account(
-    telegram_id: str,
-    tdlib_manager: TdlibAuthManager | None = None,
-) -> None:
-    if tdlib_manager is not None:
-        try:
-            tdlib_manager.remove_session(telegram_id)
-        except Exception:
-            pass
-
-    with STATE_LOCK:
-        if telegram_id in PENDING_TELEGRAMS:
-            del PENDING_TELEGRAMS[telegram_id]
-        sessions_to_clear = [
-            sid
-            for sid, selected in SESSION_TELEGRAM_SELECTION.items()
-            if selected == telegram_id
-        ]
-        for sid in sessions_to_clear:
-            del SESSION_TELEGRAM_SELECTION[sid]
-
-
-async def _finalize_pending_login(
-    app: FastAPI,
-    *,
-    pending_id: str,
-    display_name: str | None = None,
-    phone_number: str | None = None,
-) -> str | None:
-    with STATE_LOCK:
-        pending = PENDING_TELEGRAMS.get(pending_id)
-        if pending is None:
-            return None
-        pending_name = display_name or pending.name
-        pending_proxy = pending.proxy
-        pending_phone = phone_number or pending.phone_number
-        pending_root_path = pending.root_path
-
-    config: AppConfig = app.state.config
-    db: sqlite3.Connection = app.state.db
-    active_account = create_telegram_account(
-        db,
-        app_root=str(config.app_root),
-        first_name=pending_name,
-        proxy_name=pending_proxy,
-        phone_number=pending_phone,
-        root_path=pending_root_path,
-    )
-
-    with STATE_LOCK:
-        PENDING_TELEGRAMS.pop(pending_id, None)
-        sessions_to_update = [
-            sid
-            for sid, selected in SESSION_TELEGRAM_SELECTION.items()
-            if selected == pending_id
-        ]
-        for sid in sessions_to_update:
-            SESSION_TELEGRAM_SELECTION[sid] = active_account["id"]
-
-    ready_payload = _build_ws_payload(
-        EVENT_TYPE_AUTHORIZATION,
-        _auth_state(TELEGRAM_CONSTRUCTOR_STATE_READY),
-    )
-    for sid in sessions_to_update:
-        await _emit_ws_payload(ready_payload, session_id=sid)
-
-    return str(active_account["id"])
-
-
-async def _handle_tdlib_authorization_state(
-    app: FastAPI,
-    telegram_id: str,
-    td_state: dict[str, Any],
-) -> None:
-    normalized_state = _normalize_tdlib_authorization_state(td_state)
-    if normalized_state is None:
-        return
-
-    with STATE_LOCK:
-        pending = PENDING_TELEGRAMS.get(telegram_id)
-        if pending is None:
-            return
-        pending.last_authorization_state = normalized_state
-        phone_number = str(normalized_state.get("phoneNumber") or "").strip()
-        if phone_number:
-            pending.phone_number = phone_number
-        session_ids = [
-            sid
-            for sid, selected in SESSION_TELEGRAM_SELECTION.items()
-            if selected == telegram_id
-        ]
-
-    ws_payload = _build_ws_payload(EVENT_TYPE_AUTHORIZATION, normalized_state)
-    for session_id in session_ids:
-        await _emit_ws_payload(ws_payload, session_id=session_id)
-
-    if normalized_state.get("constructor") != TELEGRAM_CONSTRUCTOR_STATE_READY:
-        return
-
-    td_manager = _tdlib_manager_from_app(app)
-    td_me_payload: dict[str, Any] = {}
-    if td_manager is not None:
-        try:
-            td_me_payload = await asyncio.to_thread(td_manager.get_me, telegram_id)
-        except Exception as exc:
-            logger.warning("Failed to call getMe for %s: %s", telegram_id, exc)
-
-    resolved_name = _display_name_from_td_me(td_me_payload)
-    resolved_phone = str(td_me_payload.get("phone_number") or "").strip() or None
-    await _finalize_pending_login(
-        app,
-        pending_id=telegram_id,
-        display_name=resolved_name,
-        phone_number=resolved_phone,
-    )
-
-    if td_manager is not None:
-        await asyncio.to_thread(td_manager.remove_session, telegram_id)
-
-
-def _method_error(message: str) -> JSONResponse:
-    return JSONResponse(status_code=400, content={"error": message})
-
-
-def _bool_or_none(value: Any) -> bool | None:
-    if value is None:
-        return None
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, int):
-        return value != 0
-    text = str(value).strip().lower()
-    if text in {"true", "1", "yes", "on"}:
-        return True
-    if text in {"false", "0", "no", "off"}:
-        return False
-    return None
-
-
-def _file_status_from_file_record(file_record: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "fileId": _int_or_default(file_record.get("id"), 0),
-        "uniqueId": str(file_record.get("uniqueId") or ""),
-        "downloadStatus": str(file_record.get("downloadStatus") or "idle"),
-        "localPath": str(file_record.get("localPath") or ""),
-        "completionDate": _int_or_default(file_record.get("completionDate"), 0),
-        "downloadedSize": _int_or_default(file_record.get("downloadedSize"), 0),
-        "transferStatus": str(file_record.get("transferStatus") or "idle"),
-    }
-
-
-def _parse_batch_files(payload: dict[str, Any]) -> list[dict[str, Any]]:
-    files = payload.get("files")
-    if not isinstance(files, list):
-        raise HTTPException(status_code=400, detail="'files' must be an array.")
-
-    normalized: list[dict[str, Any]] = []
-    for item in files:
-        if not isinstance(item, dict):
-            continue
-        normalized.append(
-            {
-                "telegramId": _int_or_default(item.get("telegramId"), 0),
-                "chatId": _int_or_default(item.get("chatId"), 0),
-                "messageId": _int_or_default(item.get("messageId"), 0),
-                "fileId": _int_or_default(item.get("fileId"), 0),
-                "uniqueId": str(item.get("uniqueId") or "").strip(),
-            }
-        )
-    return normalized
-
-
 def get_db(request: Request) -> sqlite3.Connection:
     return request.app.state.db
 
@@ -1168,26 +292,6 @@ def not_implemented() -> JSONResponse:
             "error": "This endpoint is not implemented in the Python backend yet."
         },
     )
-
-
-def _get_filters(request: Request) -> dict[str, str]:
-    filters = dict(request.query_params)
-    search = filters.get("search")
-    if search:
-        filters["search"] = unquote(search)
-    link = filters.get("link")
-    if link:
-        filters["link"] = _decode_link_value(link)
-    return filters
-
-
-def _to_telegram_id(telegram_id: str) -> int:
-    try:
-        return int(telegram_id)
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=404, detail="Telegram account not found."
-        ) from exc
 
 
 @app.get("/")
@@ -1216,12 +320,7 @@ async def websocket_events(websocket: WebSocket) -> None:
     telegram_id = websocket.query_params.get("telegramId")
 
     await websocket.accept()
-    with STATE_LOCK:
-        WS_CONNECTIONS.setdefault(session_id, set()).add(websocket)
-        if telegram_id:
-            SESSION_TELEGRAM_SELECTION[session_id] = telegram_id
-        selected_id = SESSION_TELEGRAM_SELECTION.get(session_id)
-        pending = PENDING_TELEGRAMS.get(selected_id) if selected_id else None
+    pending = register_ws_connection(session_id, websocket, telegram_id)
 
     if pending is not None:
         await _emit_ws_payload(
@@ -1238,12 +337,7 @@ async def websocket_events(websocket: WebSocket) -> None:
     except WebSocketDisconnect:
         pass
     finally:
-        with STATE_LOCK:
-            session_connections = WS_CONNECTIONS.get(session_id)
-            if session_connections is not None:
-                session_connections.discard(websocket)
-                if not session_connections:
-                    del WS_CONNECTIONS[session_id]
+        unregister_ws_connection(session_id, websocket)
 
 
 @app.get("/settings")
@@ -1537,11 +631,7 @@ def telegrams(
 def telegrams_change(request: Request) -> Response:
     session_id = _session_id_from_request(request)
     telegram_id = (request.query_params.get("telegramId") or "").strip()
-    with STATE_LOCK:
-        if not telegram_id:
-            SESSION_TELEGRAM_SELECTION.pop(session_id, None)
-        else:
-            SESSION_TELEGRAM_SELECTION[session_id] = telegram_id
+    update_session_selection(session_id, telegram_id or None)
     return Response(status_code=200)
 
 
