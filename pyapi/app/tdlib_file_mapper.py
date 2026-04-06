@@ -121,20 +121,22 @@ def extract_td_message_file(message: dict[str, Any]) -> dict[str, Any] | None:
         td_file = _safe_td_file(best.get("photo") if isinstance(best, dict) else None)
         if td_file is None:
             return None
-        completed_sizes = [
-            item
-            for item in candidates
-            if isinstance(item, dict)
-            and isinstance(item.get("photo"), dict)
-            and isinstance(item["photo"].get("local"), dict)
-            and bool(item["photo"]["local"].get("is_downloading_completed"))
-        ]
-        thumbnail_source = max(
-            completed_sizes,
+        # Pick a thumbnail size suitable for preview (~320px+).
+        # Sort candidates by pixel count ascending so we can pick the
+        # smallest size that is still large enough for gallery display.
+        _THUMB_MIN_DIM = 320
+        sorted_candidates = sorted(
+            candidates,
             key=lambda item: _int_or_default(item.get("width"), 0)
             * _int_or_default(item.get("height"), 0),
-            default=best,
         )
+        thumbnail_source = best  # fallback: largest size
+        for item in sorted_candidates:
+            w = _int_or_default(item.get("width"), 0)
+            h = _int_or_default(item.get("height"), 0)
+            if max(w, h) >= _THUMB_MIN_DIM:
+                thumbnail_source = item
+                break
         thumbnail_file = _thumbnail_payload(
             _safe_td_file(
                 thumbnail_source.get("photo")

@@ -714,8 +714,21 @@ def enrich_tdlib_thumbnails_for_files(
     for file_item in files:
         if not isinstance(file_item, dict):
             continue
-        if isinstance(file_item.get("thumbnailFile"), dict):
-            continue
+        existing_thumb = (
+            file_item.get("thumbnailFile")
+            if isinstance(file_item.get("thumbnailFile"), dict)
+            else None
+        )
+        if existing_thumb is not None:
+            extra = (
+                existing_thumb.get("extra")
+                if isinstance(existing_thumb.get("extra"), dict)
+                else {}
+            )
+            tw = _int_or_default(extra.get("width"), 0)
+            th = _int_or_default(extra.get("height"), 0)
+            if max(tw, th) >= 320:
+                continue  # thumbnail is adequate quality
 
         chat_id = _int_or_default(file_item.get("chatId"), 0)
         message_id = _int_or_default(file_item.get("messageId"), 0)

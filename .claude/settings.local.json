@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(find . -name '*.tsx' -exec sed -i -e 's/rounded-\\\\[14px\\\\]/rounded-[4px]/g' -e 's/rounded-\\\\[16px\\\\]/rounded-[4px]/g' -e 's/rounded-\\\\[18px\\\\]/rounded-[4px]/g' -e 's/rounded-\\\\[20px\\\\]/rounded-[4px]/g' -e 's/rounded-\\\\[22px\\\\]/rounded-[4px]/g' -e 's/rounded-\\\\[24px\\\\]/rounded-[4px]/g' -e 's/rounded-\\\\[28px\\\\]/rounded-[4px]/g' -e 's/rounded-\\\\[32px\\\\]/rounded-[4px]/g' -e 's/border-border\\\\/80/border-border/g' -e 's/border-border\\\\/70/border-border/g' -e s/backdrop-blur-sm//g -e s/backdrop-blur//g -e s/shadow-sm//g -e s/shadow-md//g -e s/shadow-lg//g -e s/shadow-none//g -e 's/bg-muted\\\\/60/bg-muted/g' -e 's/bg-muted\\\\/40/bg-accent/g' -e 's/bg-muted\\\\/20/bg-accent/g' -e 's/bg-background\\\\/85/bg-background\\\\/90/g' -e 's/bg-\\\\[#211922\\\\]\\\\/30/bg-background\\\\/80/g' '{}' +)",
-      "Bash(npx next:*)"
+      "Bash(npx next:*)",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('app/tdlib_file_mapper.py'\\).read\\(\\)\\); print\\('mapper OK'\\); ast.parse\\(open\\('app/tdlib_downloads.py'\\).read\\(\\)\\); print\\('downloads OK'\\)\")"
     ]
   }
 }
