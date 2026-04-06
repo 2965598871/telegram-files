@@ -68,7 +68,7 @@ export const TableRowHeightSwitch = ({
           <TabsTrigger
             key={id}
             value={id}
-            className="px-2 shadow-none data-[state=active]:bg-input data-[state=active]:ring-border"
+            className="px-2  data-[state=active]:bg-input data-[state=active]:ring-border"
           >
             <span role="img" aria-label={`${label} size`}>
               {icon}

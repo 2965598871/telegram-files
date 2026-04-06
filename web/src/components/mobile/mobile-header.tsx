@@ -1,6 +1,5 @@
 "use client";
 
-import { Card, CardContent } from "@/components/ui/card";
 import {
   ChevronsLeftRightEllipsisIcon,
   Download,
@@ -42,33 +41,25 @@ export function MobileHeader() {
   const { settings } = useSettings();
 
   return (
-    <Card className="sticky top-3 z-30 mb-4 bg-card/95 backdrop-blur">
-      <CardContent className="p-4">
-        <div className="flex w-full items-center justify-between">
-          <Link href="/" className="inline-flex items-center gap-2 rounded-full bg-muted px-3 py-2">
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-primary-foreground">
-              <TelegramIcon className="h-4 w-4" />
-            </div>
-            <span className="text-sm font-semibold">TeleFiles</span>
-          </Link>
+    <div className="sticky top-0 z-30 mb-3 border-b border-border bg-background">
+      <div className="flex w-full items-center justify-between py-3">
+        <Link href="/" className="inline-flex items-center gap-2">
+          <div className="flex h-7 w-7 items-center justify-center rounded-[4px] bg-foreground text-background">
+            <TelegramIcon className="h-3.5 w-3.5" />
+          </div>
+          <span className="text-sm font-bold">TeleFiles</span>
+        </Link>
 
-          {accountDownloadSpeed !== 0 ? (
-            <div className="flex items-center gap-2 rounded-full bg-muted px-3 py-2 text-xs text-muted-foreground">
-              <span className="text-nowrap">
-                {`${prettyBytes(accountDownloadSpeed, { bits: settings?.speedUnits === "bits" })}/s`}
-              </span>
-              <Download className="h-4 w-4 flex-shrink-0" />
-            </div>
-          ) : (
-            <h3 className="text-sm font-medium text-muted-foreground">
-              Telegram downloader
-            </h3>
-          )}
+        {accountDownloadSpeed !== 0 && (
+          <Badge variant="outline" className="gap-1.5 text-xs">
+            <Download className="h-3 w-3" />
+            {`${prettyBytes(accountDownloadSpeed, { bits: settings?.speedUnits === "bits" })}/s`}
+          </Badge>
+        )}
 
-          <MenuDrawer />
-        </div>
-      </CardContent>
-    </Card>
+        <MenuDrawer />
+      </div>
+    </div>
   );
 }
 
@@ -93,80 +84,76 @@ function MenuDrawer() {
         </Button>
       </DrawerTrigger>
       <DrawerPortal>
-        <DrawerOverlay className="bg-black/30 dark:bg-black/50" />
+        <DrawerOverlay />
         <DrawerPrimitive.Content
           className={cn(
-            "fixed bottom-2 left-2 top-2 z-50 flex w-4/5 outline-none",
+            "fixed bottom-0 left-0 top-0 z-50 flex w-4/5 outline-none",
           )}
           style={{ "--initial-transform": "calc(100% + 8px)" } as CSSProperties}
           aria-describedby={undefined}
         >
-          <div className="flex h-full w-full grow flex-col rounded-[28px] bg-background p-4">
-            <DrawerTitle className="mb-6 text-center text-lg font-semibold">
+          <div className="flex h-full w-full grow flex-col border-r border-border bg-background p-4">
+            <DrawerTitle className="mb-6 text-base font-bold">
               TeleFiles
             </DrawerTitle>
             <div className="flex h-full flex-col justify-between">
-              <div className="flex flex-1 flex-col gap-4">
+              <div className="flex flex-1 flex-col gap-3">
                 <AccountSelect {...useTelegramAccountProps} />
                 <ChatSelect disabled={!useTelegramAccountProps.accountId} />
               </div>
-              <div className="flex flex-col gap-4">
-                <div className="flex flex-col">
-                  <Label className="text-xs font-semibold text-muted-foreground">
+              <div className="flex flex-col gap-3">
+                <div className="flex flex-col gap-1">
+                  <Label className="text-xs font-bold text-muted-foreground">
                     Auto Download
                   </Label>
-                  <div className="py-2">
-                    {chat ? (
-                      <AutomationDialog />
-                    ) : (
-                      <Button
-                        variant="outline"
-                        className="w-full"
-                        disabled={true}
-                      >
-                        No chat selected
-                      </Button>
-                    )}
-                  </div>
+                  {chat ? (
+                    <AutomationDialog />
+                  ) : (
+                    <Button
+                      variant="outline"
+                      className="w-full"
+                      disabled={true}
+                    >
+                      No chat selected
+                    </Button>
+                  )}
                 </div>
-                <div className="flex flex-col">
-                  <Label className="text-xs font-semibold text-muted-foreground">
+                <div className="flex flex-col gap-1">
+                  <Label className="text-xs font-bold text-muted-foreground">
                     Layout
                   </Label>
-                  <div className="py-2">
-                    <Toggle
-                      className="w-full border border-input bg-card"
-                      pressed={layout === "gallery"}
-                      onPressedChange={(pressed) => {
-                        setLayout(pressed ? "gallery" : "detailed");
-                      }}
-                    >
-                      {layout === "detailed" ? (
-                        <>
-                          <List className="h-4 w-4" />
-                          <span className="">Detailed Layout</span>
-                        </>
-                      ) : (
-                        <>
-                          <GalleryHorizontal className="h-4 w-4" />
-                          <span>Pin Layout</span>
-                        </>
-                      )}
-                    </Toggle>
-                  </div>
+                  <Toggle
+                    className="w-full border border-input rounded-[4px]"
+                    pressed={layout === "gallery"}
+                    onPressedChange={(pressed) => {
+                      setLayout(pressed ? "gallery" : "detailed");
+                    }}
+                  >
+                    {layout === "detailed" ? (
+                      <>
+                        <List className="h-4 w-4" />
+                        <span>Detailed</span>
+                      </>
+                    ) : (
+                      <>
+                        <GalleryHorizontal className="h-4 w-4" />
+                        <span>Gallery</span>
+                      </>
+                    )}
+                  </Toggle>
                 </div>
               </div>
-              <div className="flex items-center justify-between gap-2 py-4">
+              <div className="flex items-center justify-between gap-2 border-t border-border pt-3 mt-3">
                 <Badge
                   variant={
                     connectionStatus === "Open" ? "default" : "secondary"
                   }
-                  className="gap-2 px-3 py-2"
+                  className="gap-1.5 text-xs"
                 >
                   {connectionStatus === "Open" ? (
-                    <ChevronsLeftRightEllipsisIcon className="h-4 w-4" />
+                    <ChevronsLeftRightEllipsisIcon className="h-3 w-3" />
                   ) : (
-                    <UnplugIcon className="h-4 w-4" />
+                    <UnplugIcon className="h-3 w-3" />
                   )}
                   {connectionStatus}
                 </Badge>

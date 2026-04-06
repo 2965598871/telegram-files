@@ -98,7 +98,7 @@ export default function AutomationDialog() {
 
   if (isLoading) {
     return (
-      <div className="h-10 w-36 animate-pulse rounded-[16px] bg-muted"></div>
+      <div className="h-10 w-36 animate-pulse rounded-[4px] bg-muted"></div>
     );
   }
 
@@ -129,7 +129,7 @@ export default function AutomationDialog() {
         </DialogHeader>
         {!editMode && chat?.auto ? (
           <div className="space-y-4">
-            <div className="space-y-4 rounded-[24px] border border-border/80 bg-card p-5">
+            <div className="space-y-4 rounded-[4px] border border-border bg-card p-5">
               <div className="flex items-center justify-between">
                 <Label className="text-sm font-semibold text-foreground">
                   Auto Preload
@@ -152,7 +152,7 @@ export default function AutomationDialog() {
                 </p>
               )}
             </div>
-            <div className="space-y-4 rounded-[24px] border border-border/80 bg-card p-5">
+            <div className="space-y-4 rounded-[4px] border border-border bg-card p-5">
               <div className="flex items-center justify-between">
                 <Label className="text-sm font-semibold text-foreground">
                   Auto Download
@@ -178,7 +178,7 @@ export default function AutomationDialog() {
                   )}
                   <div className="space-y-3">
                     {/* Query Keyword Section */}
-                    <div className="rounded-[20px] bg-muted/60 p-3">
+                    <div className="rounded-[4px] bg-muted p-3">
                       <div className="flex flex-col space-y-1">
                         <span className="text-xs font-medium text-muted-foreground">
                           Query Keyword
@@ -189,7 +189,7 @@ export default function AutomationDialog() {
                         </span>
                       </div>
                     </div>
-                    <div className="rounded-[20px] bg-muted/60 p-3">
+                    <div className="rounded-[4px] bg-muted p-3">
                       <div className="flex flex-col space-y-1">
                         <span className="text-xs font-medium text-muted-foreground">
                           Filter Expression
@@ -201,7 +201,7 @@ export default function AutomationDialog() {
                       </div>
                     </div>
 
-                    <div className="rounded-[20px] bg-muted/60 p-3">
+                    <div className="rounded-[4px] bg-muted p-3">
                       <span className="text-xs font-medium text-muted-foreground">
                         File Types
                       </span>
@@ -224,7 +224,7 @@ export default function AutomationDialog() {
                       </div>
                     </div>
 
-                    <div className="flex items-center justify-between rounded-[20px] bg-muted/60 p-3">
+                    <div className="flex items-center justify-between rounded-[4px] bg-muted p-3">
                       <span className="text-xs font-medium text-muted-foreground">
                         Download History
                       </span>
@@ -241,7 +241,7 @@ export default function AutomationDialog() {
                       </Badge>
                     </div>
 
-                    <div className="flex items-center justify-between rounded-[20px] bg-muted/60 p-3">
+                    <div className="flex items-center justify-between rounded-[4px] bg-muted p-3">
                       <span className="text-xs font-medium text-muted-foreground">
                         Download Comment Files
                       </span>
@@ -262,7 +262,7 @@ export default function AutomationDialog() {
               )}
             </div>
 
-            <div className="space-y-4 rounded-[24px] border border-border/80 bg-card p-5">
+            <div className="space-y-4 rounded-[4px] border border-border bg-card p-5">
               <div className="flex items-center justify-between">
                 <Label className="text-sm font-semibold text-foreground">
                   Auto Transfer
@@ -287,7 +287,7 @@ export default function AutomationDialog() {
                     </p>
                   )}
                   <div className="space-y-3">
-                    <div className="rounded-[20px] bg-muted/60 p-3">
+                    <div className="rounded-[4px] bg-muted p-3">
                       <div className="flex flex-col space-y-1">
                         <span className="text-xs font-medium text-muted-foreground">
                           Destination Folder
@@ -297,7 +297,7 @@ export default function AutomationDialog() {
                         </span>
                       </div>
                     </div>
-                    <div className="flex flex-col space-y-3 rounded-[20px] bg-muted/60 p-3">
+                    <div className="flex flex-col space-y-3 rounded-[4px] bg-muted p-3">
                       <div className="flex items-center justify-between">
                           <span className="text-xs text-muted-foreground">
                           Transfer Policy
@@ -308,12 +308,12 @@ export default function AutomationDialog() {
                       </div>
                       {chat.auto.transfer.rule.transferPolicy ===
                         "GROUP_BY_AI" && (
-                        <div className="mt-2 w-full whitespace-pre-line rounded-[16px] bg-card p-2 text-xs text-muted-foreground">
+                        <div className="mt-2 w-full whitespace-pre-line rounded-[4px] bg-card p-2 text-xs text-muted-foreground">
                           {chat.auto.transfer.rule.extra.promptTemplate}
                         </div>
                       )}
                     </div>
-                    <div className="flex items-center justify-between rounded-[20px] bg-muted/60 p-3">
+                    <div className="flex items-center justify-between rounded-[4px] bg-muted p-3">
                       <span className="text-xs text-muted-foreground">
                         Duplication Policy
                       </span>
@@ -321,7 +321,7 @@ export default function AutomationDialog() {
                         {chat.auto.transfer.rule.duplicationPolicy}
                       </Badge>
                     </div>
-                    <div className="flex items-center justify-between rounded-[20px] bg-muted/60 p-3">
+                    <div className="flex items-center justify-between rounded-[4px] bg-muted p-3">
                       <span className="text-xs text-muted-foreground">
                         Transfer History
                       </span>
@@ -345,7 +345,7 @@ export default function AutomationDialog() {
         ) : (
           <AutomationForm auto={auto} onChange={setAuto} />
         )}
-        <DialogFooter className="gap-2 border-t border-border/80 pt-4">
+        <DialogFooter className="gap-2 border-t border-border pt-4">
           {!editMode && chat?.auto ? (
             <Button variant="outline" onClick={() => setEditMode(true)}>
               Edit

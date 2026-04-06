@@ -54,13 +54,13 @@ export default function SettingsForm() {
       className="flex h-full flex-col overflow-hidden"
     >
       <div className="no-scrollbar flex flex-col space-y-4 overflow-y-scroll pr-1">
-        <p className="rounded-[22px] bg-muted px-4 py-3 text-sm text-muted-foreground">
+        <p className="rounded-[4px] bg-muted px-4 py-3 text-sm text-muted-foreground">
           <Bell className="mr-2 inline-block h-4 w-4" />
           These settings will be applied to all accounts.
         </p>
         <SettingsSection title="Root path">
           <div className="flex items-center justify-between space-x-1">
-            <p className="rounded-[16px] bg-muted p-3 text-xs text-muted-foreground">
+            <p className="rounded-[4px] bg-muted p-3 text-xs text-muted-foreground">
               {account?.rootPath}
             </p>
             <Button
@@ -81,10 +81,10 @@ export default function SettingsForm() {
             <RadioGroup
               value={settings?.speedUnits || "bits"}
               onValueChange={(v) => void setSetting("speedUnits", v)}
-               className="group inline-flex h-10 items-center justify-center rounded-[18px] bg-secondary p-1 text-muted-foreground"
+               className="group inline-flex h-10 items-center justify-center rounded-[4px] bg-secondary p-1 text-muted-foreground"
                data-state={settings?.speedUnits || "bits"}
              >
-               <label className="inline-flex cursor-pointer items-center justify-center whitespace-nowrap rounded-[14px] px-3 py-1.5 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 group-data-[state=bits]:bg-card group-data-[state=bits]:text-foreground">
+               <label className="inline-flex cursor-pointer items-center justify-center whitespace-nowrap rounded-[4px] px-3 py-1.5 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 group-data-[state=bits]:bg-card group-data-[state=bits]:text-foreground">
                  bits
                  <RadioGroupItem
                    id="enspeedUnits-bits"
@@ -92,7 +92,7 @@ export default function SettingsForm() {
                   className="sr-only"
                 />
               </label>
-               <label className="inline-flex cursor-pointer items-center justify-center whitespace-nowrap rounded-[14px] px-3 py-1.5 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 group-data-[state=bytes]:bg-card group-data-[state=bytes]:text-foreground">
+               <label className="inline-flex cursor-pointer items-center justify-center whitespace-nowrap rounded-[4px] px-3 py-1.5 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 group-data-[state=bytes]:bg-card group-data-[state=bytes]:text-foreground">
                  bytes
                  <RadioGroupItem
                    id="speedUnits-bytes"
@@ -104,7 +104,7 @@ export default function SettingsForm() {
           </div>
         </SettingsSection>
         <div
-          className="flex w-full cursor-pointer flex-col space-y-4 rounded-[24px] border border-border/80 bg-card p-5"
+          className="flex w-full cursor-pointer flex-col space-y-4 rounded-[4px] border border-border bg-card p-5"
           onClick={(event) => handleSwitchChange("uniqueOnly", event)}
         >
           <div className="flex items-center justify-between">
@@ -122,7 +122,7 @@ export default function SettingsForm() {
             form will be inaccurate.
           </p>
         </div>
-        <div className="flex w-full flex-col space-y-4 rounded-[24px] border border-border/80 bg-card p-5">
+        <div className="flex w-full flex-col space-y-4 rounded-[4px] border border-border bg-card p-5">
           <div
             className="flex cursor-pointer flex-col space-y-4"
             onClick={(event) => handleSwitchChange("alwaysHide", event)}
@@ -163,7 +163,7 @@ export default function SettingsForm() {
             </div>
           )}
         </div>
-        <div className="flex w-full flex-col space-y-4 rounded-[24px] border border-border/80 bg-card p-5">
+        <div className="flex w-full flex-col space-y-4 rounded-[4px] border border-border bg-card p-5">
           <Label className="text-base font-semibold text-foreground">Auto download</Label>
           <div className="flex flex-col space-y-4">
             <div className="flex items-center justify-between">
@@ -243,7 +243,7 @@ export default function SettingsForm() {
             </p>
           </div>
         </div>
-        <div className="flex w-full flex-col space-y-4 rounded-[24px] border border-border/80 bg-card p-5">
+        <div className="flex w-full flex-col space-y-4 rounded-[4px] border border-border bg-card p-5">
           <Label className="text-base font-semibold text-foreground">Tags</Label>
           <div className="flex flex-col space-y-4">
             <TagsInput
@@ -258,7 +258,7 @@ export default function SettingsForm() {
           </div>
         </div>
       </div>
-      <DialogFooter className="mt-4 flex-1 gap-2 border-t border-border/80 bg-background pt-4">
+      <DialogFooter className="mt-4 flex-1 gap-2 border-t border-border bg-background pt-4">
         <DialogClose asChild>
           <Button className="w-full md:w-auto" variant="outline" type="button">
             Cancel
@@ -280,7 +280,7 @@ function SettingsSection({
   children: React.ReactNode;
 }) {
   return (
-    <div className="w-full rounded-[24px] border border-border/80 bg-card p-5">
+    <div className="w-full rounded-[4px] border border-border bg-card p-5">
       <p className="mb-3 text-base font-semibold text-foreground">{title}</p>
       {children}
     </div>

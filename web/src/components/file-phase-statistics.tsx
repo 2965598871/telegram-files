@@ -109,7 +109,7 @@ const TelegramStats: React.FC<TelegramStatsProps> = ({ telegramId }) => {
 
   if (error) {
     return (
-      <div className="rounded-[24px] border border-border/80 bg-card p-5 text-destructive">
+      <div className="rounded-[4px] border border-border bg-card p-5 text-destructive">
         Failed to load statistics
       </div>
     );
@@ -117,7 +117,7 @@ const TelegramStats: React.FC<TelegramStatsProps> = ({ telegramId }) => {
 
   if (isLoading || !data) {
     return (
-      <div className="rounded-[24px] border border-border/80 bg-card p-5 text-muted-foreground">
+      <div className="rounded-[4px] border border-border bg-card p-5 text-muted-foreground">
         <div className="flex items-center gap-3">
           <LoaderPinwheel className="h-5 w-5 animate-spin" />
           Loading statistics...
@@ -158,7 +158,7 @@ const TelegramStats: React.FC<TelegramStatsProps> = ({ telegramId }) => {
         </Select>
       </div>
 
-      <Card className="border-border/80">
+      <Card className="border-border">
         <CardHeader>
           <CardTitle className="flex items-center gap-3 px-1">
             <span className="flex h-10 w-10 items-center justify-center rounded-full bg-muted">
@@ -240,7 +240,7 @@ const TelegramStats: React.FC<TelegramStatsProps> = ({ telegramId }) => {
         </CardContent>
       </Card>
 
-      <Card className="border-border/80">
+      <Card className="border-border">
         <CardHeader>
           <CardTitle className="flex items-center gap-3 px-1">
             <span className="flex h-10 w-10 items-center justify-center rounded-full bg-muted">

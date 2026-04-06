@@ -52,7 +52,7 @@ export function FileCard({
       ref={ref}
       data-index={index}
       className={cn(
-        "before:ease-[cubic-bezier(0.4,0,0.2,1)] before:will-change:transform relative overflow-hidden rounded-[28px] border border-border/80 before:absolute before:bottom-0 before:left-0 before:top-auto before:z-10 before:h-1.5 before:transform before:rounded-r-full before:bg-primary before:duration-500 before:content-['']",
+        "before:ease-[cubic-bezier(0.4,0,0.2,1)] before:will-change:transform relative overflow-hidden rounded-[4px] border border-border before:absolute before:bottom-0 before:left-0 before:top-auto before:z-10 before:h-1.5 before:transform before:rounded-r-full before:bg-primary before:duration-500 before:content-['']",
         downloadProgress > 0 && downloadProgress !== 100
           ? `before:w-progress`
           : "before:w-0",
@@ -92,7 +92,7 @@ export function FileCard({
 
           <div
             className={cn(
-              "overflow-hidden rounded-[24px] border-[8px] border-white bg-muted",
+              "overflow-hidden rounded-[4px] bg-muted",
               isGalleryLayout ? "w-full" : "h-20 w-20 min-w-20",
             )}
           >

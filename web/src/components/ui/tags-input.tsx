@@ -123,7 +123,7 @@ export const TagsInput: React.FC<TagsInputProps> = ({
             onFocus={() => setIsInputFocused(true)}
             onBlur={() => setIsInputFocused(false)}
             placeholder={value.length === 0 ? placeholder : ""}
-            className="border-0 bg-transparent p-0 text-sm shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
+            className="border-0 bg-transparent p-0 text-sm  focus-visible:ring-0 focus-visible:ring-offset-0"
           />
         </div>
 

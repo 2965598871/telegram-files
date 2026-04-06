@@ -1,5 +1,4 @@
 import { type Config } from "tailwindcss";
-import { fontFamily } from "tailwindcss/defaultTheme";
 
 import tailwindcss_animate from "tailwindcss-animate";
 
@@ -20,16 +19,6 @@ export default {
         "border-beam": {
           "100%": {
             "offset-distance": "100%",
-          },
-        },
-        orbit: {
-          "0%": {
-            transform:
-              "rotate(0deg) translateY(calc(var(--radius) * 1px)) rotate(0deg)",
-          },
-          "100%": {
-            transform:
-              "rotate(360deg) translateY(calc(var(--radius) * 1px)) rotate(-360deg)",
           },
         },
         breathing: {
@@ -62,31 +51,28 @@ export default {
       animation: {
         "caret-blink": "caret-blink 1.25s ease-out infinite",
         "border-beam": "border-beam calc(var(--duration)*1s) infinite linear",
-        orbit: "orbit calc(var(--duration)*1s) linear infinite",
         breathing: "breathing 6s ease-in-out infinite",
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
       },
       fontFamily: {
-        sans: [
-          '"Pin Sans"',
-          "-apple-system",
-          "system-ui",
-          '"Segoe UI"',
-          "Roboto",
-          "Oxygen-Sans",
-          "Ubuntu",
-          "Cantarell",
-          '"Helvetica Neue"',
-          "Helvetica",
-          "Arial",
-          ...fontFamily.sans,
+        mono: [
+          '"Berkeley Mono"',
+          '"IBM Plex Mono"',
+          "ui-monospace",
+          "SFMono-Regular",
+          "Menlo",
+          "Monaco",
+          "Consolas",
+          '"Liberation Mono"',
+          '"Courier New"',
+          "monospace",
         ],
       },
       borderRadius: {
         lg: "var(--radius)",
-        md: "calc(var(--radius) - 2px)",
-        sm: "calc(var(--radius) - 4px)",
+        md: "calc(var(--radius) - 1px)",
+        sm: "calc(var(--radius) - 2px)",
       },
       colors: {
         background: "hsl(var(--background))",

@@ -92,7 +92,7 @@ export default function FileViewer({
       <DialogPortal>
         <DialogOverlay>
           <>
-            <div className="absolute left-0 top-0 z-[100] flex min-h-16 w-full items-start border-gray-700 px-4 py-3 text-white backdrop-blur">
+            <div className="absolute left-0 top-0 z-[100] flex min-h-16 w-full items-start border-gray-700 px-4 py-3 text-white ">
               <div className="min-w-0 max-w-[calc(100vw-7rem)] space-y-1">
                 {showMessageCaption && (
                   <SpoiledWrapper

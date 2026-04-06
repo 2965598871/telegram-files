@@ -162,7 +162,7 @@ export default function Proxys({
 
   return (
     <div className="relative h-full">
-      <div className="mb-4 flex items-center justify-between gap-3 rounded-[24px] bg-muted p-4">
+      <div className="mb-4 flex items-center justify-between gap-3 rounded-[4px] bg-muted p-4">
         <div className="flex items-center space-x-2">
           <h1 className="text-2xl font-semibold">Proxys</h1>
           {telegramId && <ProxyPing accountId={telegramId} />}
@@ -172,7 +172,7 @@ export default function Proxys({
         </Button>
       </div>
       {proxys.length === 0 && (
-        <div className="flex h-32 items-center justify-center rounded-[24px] bg-muted">
+        <div className="flex h-32 items-center justify-center rounded-[4px] bg-muted">
           <p className="text-center text-muted-foreground">No proxys added yet</p>
         </div>
       )}
@@ -180,7 +180,7 @@ export default function Proxys({
         {proxys.map((proxy) => (
           <Card
             key={proxy.name}
-            className={cn("relative overflow-hidden border-border/80 transition-colors hover:bg-muted", {
+            className={cn("relative overflow-hidden border-border transition-colors hover:bg-muted", {
               "cursor-pointer": enableSelect,
             })}
             onClick={() => {
@@ -228,7 +228,7 @@ export default function Proxys({
         ))}
       </div>
       {enableSelect && (
-        <div className="absolute bottom-0 flex w-full flex-col-reverse items-center justify-end gap-2 border-t border-border/80 bg-background pt-4 sm:flex-row">
+        <div className="absolute bottom-0 flex w-full flex-col-reverse items-center justify-end gap-2 border-t border-border bg-background pt-4 sm:flex-row">
           <DialogClose asChild>
             <Button
               className="w-full md:w-auto"
@@ -259,7 +259,7 @@ export default function Proxys({
           </DialogHeader>
           <div className="space-y-4">
             {/* Radio buttons for proxy type */}
-            <div className="rounded-[20px] bg-muted p-4">
+            <div className="rounded-[4px] bg-muted p-4">
               <Label className="mb-2 block">Type</Label>
               <div className="flex space-x-4">
                 <label className="flex cursor-pointer items-center">
@@ -315,7 +315,7 @@ export default function Proxys({
               </div>
             </div>
 
-            <div className="rounded-[20px] bg-muted p-4">
+            <div className="rounded-[4px] bg-muted p-4">
               <Label className="mb-2 block">Name</Label>
               <Input
                 name="name"
@@ -324,7 +324,7 @@ export default function Proxys({
                 placeholder="Enter proxy name"
               />
             </div>
-            <div className="rounded-[20px] bg-muted p-4">
+            <div className="rounded-[4px] bg-muted p-4">
               <Label className="mb-2 block">
                 Proxy server address and port number
               </Label>
@@ -354,7 +354,7 @@ export default function Proxys({
                 </div>
               </div>
             </div>
-            <div className="rounded-[20px] bg-muted p-4">
+            <div className="rounded-[4px] bg-muted p-4">
               <Label className="mb-2 block">Authentication (optional)</Label>
               {formState.type === "mtproto" ? (
                 <div>

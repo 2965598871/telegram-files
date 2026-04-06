@@ -74,7 +74,7 @@ const FileStatistics: React.FC<FileStatisticsProps> = ({ telegramId }) => {
 
   if (error) {
     return (
-      <div className="rounded-[24px] border border-border/80 bg-card p-5 text-destructive">
+      <div className="rounded-[4px] border border-border bg-card p-5 text-destructive">
         <div className="flex items-center gap-3">
           <AlertTriangle className="h-5 w-5" />
           Failed to load statistics.
@@ -85,7 +85,7 @@ const FileStatistics: React.FC<FileStatisticsProps> = ({ telegramId }) => {
 
   if (!data) {
     return (
-      <div className="rounded-[24px] border border-border/80 bg-card p-5 text-muted-foreground">
+      <div className="rounded-[4px] border border-border bg-card p-5 text-muted-foreground">
         <div className="flex items-center gap-3">
           <LoaderPinwheel
             className="h-5 w-5 animate-spin"
@@ -179,7 +179,7 @@ const FileStatistics: React.FC<FileStatisticsProps> = ({ telegramId }) => {
           {speedStats.map((stat) => (
             <div
               key={stat.label}
-              className="rounded-[22px] border border-border/80 bg-muted/60 p-4"
+              className="rounded-[4px] border border-border bg-muted p-4"
             >
               <div className="flex items-center gap-3">
                 <div
@@ -274,7 +274,7 @@ function SectionCard({
   children: React.ReactNode;
 }) {
   return (
-    <div className="rounded-[28px] border border-border/80 bg-card p-5 md:p-6">
+    <div className="rounded-[4px] border border-border bg-card p-5 md:p-6">
       <div className="mb-5 flex items-start gap-3">
         <div className="flex h-11 w-11 items-center justify-center rounded-full bg-muted text-foreground">
           <Icon className="h-5 w-5" />
@@ -299,7 +299,7 @@ function MetricTile({
   value: string;
 }) {
   return (
-    <div className="rounded-[22px] bg-muted/60 p-4">
+    <div className="rounded-[4px] bg-muted p-4">
       <div className="flex items-center gap-3 text-sm text-muted-foreground">
         <div className="flex h-10 w-10 items-center justify-center rounded-full bg-card">
           <Icon className="h-4 w-4" />
@@ -321,7 +321,7 @@ function MetricRow({
   value: string;
 }) {
   return (
-    <div className="flex items-center justify-between rounded-[22px] bg-muted/60 p-4">
+    <div className="flex items-center justify-between rounded-[4px] bg-muted p-4">
       <div className="flex items-center gap-3 text-sm text-muted-foreground">
         <div className="flex h-10 w-10 items-center justify-center rounded-full bg-card">
           <Icon className="h-4 w-4" />

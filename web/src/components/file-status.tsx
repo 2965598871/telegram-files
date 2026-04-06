@@ -101,7 +101,7 @@ export default function FileStatus({
                   className={cn(
                     "h-7 text-xs",
                     DOWNLOAD_STATUS[file.downloadStatus].className,
-                    isMobile && "shadow-none",
+                    isMobile && "",
                   )}
               >
                 {DOWNLOAD_STATUS[file.downloadStatus].text}

@@ -177,7 +177,7 @@ const DateFilter = ({ dateType, dateRange, onChange }: DateFilterProps) => {
           </Button>
         </PopoverTrigger>
         <PopoverContent
-          className="w-auto rounded-[28px] p-4"
+          className="w-auto rounded-[4px] p-4"
           side={isMobile ? undefined : "right"}
           modal={true}
         >
@@ -200,7 +200,7 @@ const DateFilter = ({ dateType, dateRange, onChange }: DateFilterProps) => {
                 Downloaded
               </Button>
             </div>
-            <div className="rounded-[20px] border border-border/80 p-2">
+            <div className="rounded-[4px] border border-border p-2">
               <Calendar
                 mode="range"
                 selected={{
@@ -258,7 +258,7 @@ const SizeFilter = ({ sizeRange, sizeUnit, onChange }: SizeFilterProps) => {
             </Button>
           </PopoverTrigger>
           <PopoverContent
-            className="w-auto rounded-[24px] p-2"
+            className="w-auto rounded-[4px] p-2"
             align="center"
             modal={true}
           >
@@ -460,7 +460,7 @@ export default function FileFilters({
   };
 
   const panelClassName =
-    "rounded-[24px] border border-border/80 bg-muted/60 p-4";
+    "rounded-[4px] border border-border bg-muted p-4";
 
   return (
     <Drawer
@@ -489,7 +489,7 @@ export default function FileFilters({
         <DrawerPrimitive.Content
           className={cn(
             isMobile
-              ? "fixed inset-x-0 bottom-0 z-50 mt-24 flex h-auto max-h-screen flex-col rounded-t-[28px] border border-border/80 bg-background"
+              ? "fixed inset-x-0 bottom-0 z-50 mt-24 flex h-auto max-h-screen flex-col rounded-t-[28px] border border-border bg-background"
               : "fixed bottom-2 left-2 top-2 z-50 flex w-[400px] outline-none",
           )}
           style={
@@ -501,7 +501,7 @@ export default function FileFilters({
           {isMobile && (
             <div className="mx-auto mt-4 h-2 w-[100px] rounded-full bg-muted" />
           )}
-          <div className="no-scrollbar flex h-full w-full grow flex-col overflow-auto rounded-[28px] bg-background">
+          <div className="no-scrollbar flex h-full w-full grow flex-col overflow-auto rounded-[4px] bg-background">
             <div className="flex-1 p-6 pb-[132px]">
               <div className="space-y-5">
                 <div className="space-y-2">
@@ -621,7 +621,7 @@ export default function FileFilters({
               </div>
             </div>
 
-            <DrawerFooter className="fixed bottom-0 left-0 right-0 border-t border-border/80 bg-background/95 backdrop-blur">
+            <DrawerFooter className="fixed bottom-0 left-0 right-0 border-t border-border bg-background/95 ">
               <Button onClick={handleApply}>Apply filters</Button>
               <Button variant="outline" onClick={handleClear}>
                 Clear filters

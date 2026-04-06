@@ -16,9 +16,7 @@ import React from "react";
 import { Button } from "@/components/ui/button";
 import useSWR from "swr";
 import prettyBytes from "pretty-bytes";
-import { Card, CardContent } from "./ui/card";
 import { useRouter } from "next/navigation";
-import { Badge } from "@/components/ui/badge";
 
 interface EmptyStateProps {
   isLoadingAccount?: boolean;
@@ -37,73 +35,61 @@ export function EmptyState({
 }: EmptyStateProps) {
   if (message) {
     return (
-      <Card className="w-full max-w-2xl">
-        <CardContent className="flex flex-col items-center gap-4 p-8 text-center md:p-10">
-          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted text-foreground">
-            <MessageSquare className="h-7 w-7" />
-          </div>
-          <div className="space-y-2">
-            <h2 className="text-3xl font-semibold">{message}</h2>
-            <p className="text-sm text-muted-foreground">
-              Pick a chat and the board fills in.
-            </p>
-          </div>
-        </CardContent>
-      </Card>
+      <div className="w-full max-w-2xl border border-border rounded-[4px] bg-card">
+        <div className="flex flex-col items-center gap-4 p-8 text-center">
+          <MessageSquare className="h-6 w-6 text-muted-foreground" />
+          <h2 className="text-xl font-bold">{message}</h2>
+        </div>
+      </div>
     );
   }
 
   return (
     <div className="app-shell px-4 py-6 md:px-6 md:py-8">
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.1fr)_420px]">
-        <Card className="overflow-hidden">
-          <CardContent className="p-6 md:p-10">
-            <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_260px] lg:items-start">
-              <div className="space-y-6">
-                <Badge variant="outline" className="px-3 py-2 uppercase tracking-[0.12em]">
-                  Telegram downloader
-                </Badge>
-
-                <div className="space-y-4">
-                  <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary text-primary-foreground">
-                    <TelegramIcon className="h-7 w-7" />
-                  </div>
-                  <h1 className="max-w-3xl text-4xl font-semibold leading-[0.95] sm:text-5xl md:text-[4.5rem]">
-                    Save Telegram media to a board built for browsing.
-                  </h1>
-                  <p className="max-w-xl text-base text-muted-foreground">
-                    Add an account, pick a chat, download what matters.
-                  </p>
-                </div>
-
-                <AccountDialog isAdd={true}>
-                  <Button size="lg">
-                    <UserPlus className="h-4 w-4" />
-                    Add account
-                  </Button>
-                </AccountDialog>
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.1fr)_380px]">
+        <div className="border border-border rounded-[4px] bg-card p-6 md:p-8">
+          <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_240px] lg:items-start">
+            <div className="space-y-6">
+              <div className="flex h-10 w-10 items-center justify-center rounded-[4px] bg-foreground text-background">
+                <TelegramIcon className="h-5 w-5" />
               </div>
 
-              <div className="grid gap-3">
-                <MetricTile
-                  icon={hasAccounts ? Check : AlertTriangle}
-                  label="Accounts"
-                  value={String(accounts.length)}
-                />
-                <MetricTile
-                  icon={Download}
-                  label="Downloader"
-                  value={isLoadingAccount ? "Syncing" : "Ready"}
-                />
-                <MetricTile
-                  icon={HardDrive}
-                  label="Mode"
-                  value="Board"
-                />
+              <div className="space-y-3">
+                <h1 className="max-w-3xl text-2xl font-bold leading-tight sm:text-3xl md:text-4xl">
+                  Telegram file downloader
+                </h1>
+                <p className="max-w-xl text-sm text-muted-foreground">
+                  Add an account, pick a chat, download what matters.
+                </p>
               </div>
+
+              <AccountDialog isAdd={true}>
+                <Button size="lg">
+                  <UserPlus className="h-4 w-4" />
+                  Add account
+                </Button>
+              </AccountDialog>
             </div>
-          </CardContent>
-        </Card>
+
+            <div className="grid gap-2">
+              <MetricTile
+                icon={hasAccounts ? Check : AlertTriangle}
+                label="Accounts"
+                value={String(accounts.length)}
+              />
+              <MetricTile
+                icon={Download}
+                label="Downloader"
+                value={isLoadingAccount ? "Syncing" : "Ready"}
+              />
+              <MetricTile
+                icon={HardDrive}
+                label="Mode"
+                value="Board"
+              />
+            </div>
+          </div>
+        </div>
 
         <AllFiles />
       </div>
@@ -111,7 +97,7 @@ export function EmptyState({
       {isLoadingAccount && (
         <div className="absolute inset-0 flex items-center justify-center">
           <LoaderPinwheel
-            className="h-8 w-8 animate-spin"
+            className="h-6 w-6 animate-spin text-muted-foreground"
             style={{ strokeWidth: "0.8px" }}
           />
         </div>
@@ -119,14 +105,7 @@ export function EmptyState({
 
       {hasAccounts && accounts.length > 0 && onSelectAccount && (
         <div className="mt-8 space-y-4">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <h2 className="text-2xl font-semibold">Accounts</h2>
-              <p className="text-sm text-muted-foreground">
-                Choose a workspace to start downloading.
-              </p>
-            </div>
-          </div>
+          <h2 className="text-lg font-bold">Accounts</h2>
           <AccountList accounts={accounts} onSelectAccount={onSelectAccount} />
         </div>
       )}
@@ -144,14 +123,12 @@ function MetricTile({
   value: string;
 }) {
   return (
-    <div className="rounded-[24px] bg-muted p-4">
-      <div className="flex items-center gap-3 text-sm text-muted-foreground">
-        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-card">
-          <Icon className="h-4 w-4" />
-        </div>
+    <div className="border border-border rounded-[4px] bg-card p-3">
+      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+        <Icon className="h-3.5 w-3.5" />
         {label}
       </div>
-      <p className="mt-4 text-2xl font-semibold text-foreground">{value}</p>
+      <p className="mt-2 text-lg font-bold text-foreground">{value}</p>
     </div>
   );
 }
@@ -168,65 +145,56 @@ function AllFiles() {
 
   if (error) {
     return (
-      <Card>
-        <CardContent className="flex h-full min-h-[280px] items-center justify-center gap-3 p-6 text-destructive">
-          <AlertTriangle className="h-5 w-5" />
+      <div className="border border-border rounded-[4px] bg-card">
+        <div className="flex h-full min-h-[240px] items-center justify-center gap-2 p-4 text-destructive">
+          <AlertTriangle className="h-4 w-4" />
           Failed to load library
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     );
   }
 
   if (isLoading || !data) {
     return (
-      <Card>
-        <CardContent className="flex h-full min-h-[280px] items-center justify-center gap-3 p-6 text-muted-foreground">
+      <div className="border border-border rounded-[4px] bg-card">
+        <div className="flex h-full min-h-[240px] items-center justify-center gap-2 p-4 text-muted-foreground">
           <LoaderPinwheel
-            className="h-5 w-5 animate-spin"
+            className="h-4 w-4 animate-spin"
             style={{ strokeWidth: "0.8px" }}
           />
           Loading library
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     );
   }
 
   return (
-    <Card>
-      <CardContent className="flex h-full flex-col gap-6 p-6 md:p-8">
-        <div className="space-y-2">
-          <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
-            Downloaded library
-          </p>
-          <h2 className="text-3xl font-semibold leading-tight">
-            Everything you have already saved.
-          </h2>
-        </div>
+    <div className="border border-border rounded-[4px] bg-card flex h-full flex-col gap-4 p-4 md:p-6">
+      <h2 className="text-base font-bold">Library</h2>
 
-        <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
-          <StatTile icon={Check} label="Downloaded" value={String(data.completed)} />
-          <StatTile
-            icon={Download}
-            label="Downloading"
-            value={String(data.downloading)}
-          />
-          <StatTile
-            icon={HardDrive}
-            label="Storage"
-            value={prettyBytes(data.downloadedSize)}
-          />
-        </div>
+      <div className="grid gap-2 sm:grid-cols-3 xl:grid-cols-1">
+        <StatTile icon={Check} label="Downloaded" value={String(data.completed)} />
+        <StatTile
+          icon={Download}
+          label="Downloading"
+          value={String(data.downloading)}
+        />
+        <StatTile
+          icon={HardDrive}
+          label="Storage"
+          value={prettyBytes(data.downloadedSize)}
+        />
+      </div>
 
-        <Button
-          variant="secondary"
-          className="w-full"
-          onClick={() => router.push("/files")}
-        >
-          Open library
-          <ArrowRight className="h-4 w-4" />
-        </Button>
-      </CardContent>
-    </Card>
+      <Button
+        variant="outline"
+        className="w-full"
+        onClick={() => router.push("/files")}
+      >
+        Open library
+        <ArrowRight className="h-4 w-4" />
+      </Button>
+    </div>
   );
 }
 
@@ -240,14 +208,12 @@ function StatTile({
   value: string;
 }) {
   return (
-    <div className="rounded-[22px] bg-muted p-4">
-      <div className="flex items-center gap-3 text-sm text-muted-foreground">
-        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-card">
-          <Icon className="h-4 w-4" />
-        </div>
+    <div className="border border-border rounded-[4px] p-3">
+      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+        <Icon className="h-3.5 w-3.5" />
         {label}
       </div>
-      <p className="mt-4 text-2xl font-semibold text-foreground">{value}</p>
+      <p className="mt-2 text-lg font-bold text-foreground">{value}</p>
     </div>
   );
 }

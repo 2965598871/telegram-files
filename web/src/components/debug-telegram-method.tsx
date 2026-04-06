@@ -127,12 +127,12 @@ export default function DebugTelegramMethod() {
   const isExecuteDisabled = !method || !!error || isMethodExecuting;
 
   return (
-    <Card className="no-scrollbar mx-auto h-full w-full overflow-y-scroll border-border/80">
+    <Card className="no-scrollbar mx-auto h-full w-full overflow-y-scroll border-border">
       <CardHeader>
         <CardTitle>Telegram API Debug</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="rounded-[24px] bg-muted/60 p-4">
+        <div className="rounded-[4px] bg-muted p-4">
           <div className="space-y-1">
             <div className="flex items-center justify-between">
               <label className="text-sm font-medium">Method</label>
@@ -222,7 +222,7 @@ export default function DebugTelegramMethod() {
           </div>
         </div>
 
-        <div className="rounded-[24px] bg-muted/60 p-4">
+        <div className="rounded-[4px] bg-muted p-4">
           <div className="space-y-1">
             <div className="flex items-center justify-between">
               <label className="text-sm font-medium">Parameters</label>
@@ -259,7 +259,7 @@ export default function DebugTelegramMethod() {
           )}
         </Button>
 
-        <div className="rounded-[24px] bg-muted/60 p-4">
+        <div className="rounded-[4px] bg-muted p-4">
           <div className="space-y-1">
             <div className="flex items-center justify-between">
               <label className="text-sm font-medium">

@@ -160,8 +160,8 @@ export function FileTable({
         />
       )}
 
-      <div className="space-y-6">
-        <div className="flex flex-col gap-4 rounded-[28px] bg-muted p-4 md:flex-row md:items-center md:justify-between md:p-5">
+      <div className="space-y-4">
+        <div className="flex flex-col gap-3 border-b border-border pb-3 md:flex-row md:items-center md:justify-between">
           <div className="flex flex-wrap items-center gap-2">
             {messageThreadId && (
               <Button variant="ghost" onClick={() => window.history.back()}>
@@ -171,20 +171,20 @@ export function FileTable({
             )}
 
             {link ? (
-              <Badge variant="outline" className="gap-2 px-3 py-2">
-                <WandSparkles className="h-3.5 w-3.5" />
+              <Badge variant="outline" className="gap-1.5">
+                <WandSparkles className="h-3 w-3" />
                 {link}
               </Badge>
             ) : (
               <>
-                <Badge variant="outline" className="px-3 py-2 capitalize">
+                <Badge variant="outline" className="capitalize">
                   {filters.type}
                 </Badge>
-                <Badge variant="outline" className="px-3 py-2">
-                  {files.length} pins
+                <Badge variant="outline">
+                  {files.length} files
                 </Badge>
                 {activeFilterCount > 0 && (
-                  <Badge variant="secondary" className="px-3 py-2">
+                  <Badge variant="secondary">
                     {activeFilterCount} filters
                   </Badge>
                 )}
@@ -199,7 +199,7 @@ export function FileTable({
             )}
           </div>
 
-          <Button variant="secondary" size="sm" onClick={toggleSelectAll}>
+          <Button variant="outline" size="sm" onClick={toggleSelectAll}>
             {selectedFiles.size === files.length && files.length > 0
               ? "Clear selection"
               : "Select visible"}
@@ -213,11 +213,11 @@ export function FileTable({
           updateField={updateField}
         />
 
-        <div className="rounded-[32px] border border-border/80 bg-card p-4 md:p-6">
+        <div className="border border-border rounded-[4px] bg-card p-3 md:p-4">
           {size === 1 && isLoading ? (
             <div className="flex min-h-[60vh] items-center justify-center">
               <LoaderPinwheel
-                className="h-8 w-8 animate-spin"
+                className="h-5 w-5 animate-spin text-muted-foreground"
                 style={{ strokeWidth: "0.8px" }}
               />
             </div>
@@ -225,7 +225,7 @@ export function FileTable({
             <FileNotFount />
           ) : (
             <>
-              <div className="columns-1 gap-4 md:columns-2 xl:columns-3 2xl:columns-4">
+              <div className="columns-1 gap-3 md:columns-2 xl:columns-3 2xl:columns-4">
                 {fileGroups.map((group) => (
                   <FilePinGroup
                     key={group.key}
@@ -242,19 +242,19 @@ export function FileTable({
                 ))}
               </div>
 
-              <div ref={loadMoreRef} className="flex justify-center pt-6">
+              <div ref={loadMoreRef} className="flex justify-center pt-4">
                 {hasMore ? (
-                  <div className="inline-flex items-center gap-3 rounded-full bg-muted px-4 py-3 text-sm text-muted-foreground">
+                  <div className="inline-flex items-center gap-2 text-sm text-muted-foreground">
                     <LoaderPinwheel
-                      className="h-4 w-4 animate-spin"
+                      className="h-3.5 w-3.5 animate-spin"
                       style={{ strokeWidth: "0.8px" }}
                     />
-                    Loading more pins
+                    Loading...
                   </div>
                 ) : (
-                  <div className="inline-flex items-center rounded-full bg-muted px-4 py-3 text-sm text-muted-foreground">
-                    End of board
-                  </div>
+                  <span className="text-sm text-muted-foreground">
+                    End of list
+                  </span>
                 )}
               </div>
             </>
@@ -288,8 +288,8 @@ function FilePinGroup({
   if (!grouped) {
     const file = group.files[0]!;
     return (
-      <div className="mb-4 break-inside-avoid">
-        <div className="overflow-hidden rounded-[28px] border border-border/80 bg-card">
+      <div className="mb-3 break-inside-avoid">
+        <div className="overflow-hidden rounded-[4px] border border-border bg-card">
           <FilePinCard
             file={file}
             checked={selectedFiles.has(file.id)}
@@ -311,14 +311,11 @@ function FilePinGroup({
   const gridCols = group.files.length >= 5 ? "grid-cols-3" : "grid-cols-2";
 
   return (
-    <div className="mb-4 break-inside-avoid">
-      <div className="overflow-hidden rounded-[28px] border border-border/80 bg-card">
-        <div className="space-y-4 p-4">
+    <div className="mb-3 break-inside-avoid">
+      <div className="overflow-hidden rounded-[4px] border border-border bg-card">
+        <div className="space-y-3 p-3">
           <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-            <Badge
-              variant="secondary"
-              className="rounded-full px-3 py-1 text-xs"
-            >
+            <Badge variant="secondary" className="text-xs">
               {group.files.length} items
             </Badge>
             <span>{prettyBytes(totalSize)}</span>
@@ -334,21 +331,21 @@ function FilePinGroup({
             <SpoiledWrapper hasSensitiveContent={firstFile.hasSensitiveContent}>
               <FileCaptionText
                 text={caption}
-                className="line-clamp-3 text-sm leading-5 text-foreground"
+                className="line-clamp-3 text-sm leading-relaxed text-foreground"
                 onTagClick={onTagClick}
               />
             </SpoiledWrapper>
           )}
 
-          <div className={cn("grid gap-3", gridCols)}>
+          <div className={cn("grid gap-2", gridCols)}>
             {group.files.map((file, index) => (
               <div
                 key={`${file.messageId}-${file.uniqueId}`}
-                className="space-y-2 rounded-[22px] border border-border/70 bg-muted/20 p-2"
+                className="space-y-1.5 rounded-[4px] border border-border p-1.5"
               >
                 <div className="relative">
                   <div
-                    className="absolute left-3 top-3 z-10"
+                    className="absolute left-2 top-2 z-10"
                     onClick={(event) => event.stopPropagation()}
                   >
                     <Checkbox
@@ -356,12 +353,12 @@ function FilePinGroup({
                       onCheckedChange={() => onCheckedChange(file.id)}
                     />
                   </div>
-                  <Badge className="absolute right-3 top-3 z-10 rounded-full bg-background/85 px-2 py-1 text-[11px] text-foreground shadow-sm backdrop-blur">
+                  <Badge className="absolute right-2 top-2 z-10 text-[11px]">
                     {index + 1}
                   </Badge>
                   <button
                     type="button"
-                    className="block w-full overflow-hidden rounded-[18px] bg-muted text-left"
+                    className="block w-full overflow-hidden rounded-[4px] bg-muted text-left"
                     onClick={() => onFileClick(file)}
                   >
                     <div className="aspect-square overflow-hidden">
@@ -420,21 +417,20 @@ function FilePinCard({
   return (
     <div
       className={cn(
-        "transition-colors hover:bg-muted/40",
-        !grouped && "rounded-[28px]",
-        checked && "bg-muted/40",
+        "transition-colors hover:bg-accent",
+        checked && "bg-accent",
       )}
     >
-      <div className="relative p-3">
+      <div className="relative p-2">
         <div
-          className="absolute left-5 top-5 z-10"
+          className="absolute left-4 top-4 z-10"
           onClick={(event) => event.stopPropagation()}
         >
           <Checkbox checked={checked} onCheckedChange={onCheckedChange} />
         </div>
 
         {file.reactionCount > 0 && (
-          <Badge className="absolute right-5 top-5 z-10 rounded-full bg-primary px-3 py-1 text-xs text-primary-foreground">
+          <Badge className="absolute right-4 top-4 z-10 text-xs">
             {file.reactionCount}
           </Badge>
         )}
@@ -446,7 +442,7 @@ function FilePinCard({
         >
           <div
             className={cn(
-              "overflow-hidden rounded-[24px] border-[8px] border-white bg-muted",
+              "overflow-hidden rounded-[4px] bg-muted",
               getPreviewAspect(file),
             )}
           >
@@ -455,13 +451,13 @@ function FilePinCard({
         </button>
       </div>
 
-      <div className="space-y-4 px-4 pb-4 pt-1">
-        <div className="space-y-3">
+      <div className="space-y-3 px-3 pb-3 pt-1">
+        <div className="space-y-2">
           {showMessageCaption && (
             <SpoiledWrapper hasSensitiveContent={file.hasSensitiveContent}>
               <FileCaptionText
                 text={file.caption}
-                className="line-clamp-2 px-1 text-sm leading-5 text-foreground"
+                className="line-clamp-2 text-sm leading-relaxed text-foreground"
                 onTagClick={onTagClick}
               />
             </SpoiledWrapper>
@@ -472,7 +468,7 @@ function FilePinCard({
             ellipsis={true}
             onTagClick={onTagClick}
           />
-          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+          <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
             <span>{prettyBytes(file.size)}</span>
             <span>&bull;</span>
             <span className="capitalize">{file.type}</span>
@@ -490,7 +486,7 @@ function FilePinCard({
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-1.5">
           <FileStatus file={file} className="justify-start" />
           {file.loaded && (
             <FileTags
@@ -504,8 +500,8 @@ function FilePinCard({
         </div>
 
         {downloadProgress > 0 && downloadProgress !== 100 && (
-          <div className="space-y-2">
-            <Progress value={downloadProgress} className="h-2" />
+          <div className="space-y-1">
+            <Progress value={downloadProgress} />
             <div className="flex items-center justify-between text-xs text-muted-foreground">
               <span>{downloadProgress.toFixed(0)}%</span>
               <span>{prettyBytes(file.downloadedSize)}</span>

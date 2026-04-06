@@ -139,7 +139,7 @@ const TimeRangeSelector = ({
       <div className={className}>
         {/* Main time range display */}
         <PopoverTrigger asChild>
-          <div className="flex h-10 items-center rounded-md border bg-background shadow-sm dark:border-input">
+          <div className="flex h-10 items-center rounded-md border bg-background  dark:border-input">
             {/* Clock icon */}
             <div className="pl-3 pr-1">
               <Clock className="h-4 w-4 text-muted-foreground" />

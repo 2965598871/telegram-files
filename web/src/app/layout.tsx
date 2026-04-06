@@ -45,11 +45,11 @@ export default async function RootLayout({
           />
         )}
       </head>
-      <body className="min-h-screen bg-background font-sans text-foreground antialiased">
+      <body className="min-h-screen bg-background font-mono text-foreground antialiased">
         <LocalStorageProvider>
           <ThemeProvider
             attribute="class"
-            defaultTheme="light"
+            defaultTheme="dark"
             disableTransitionOnChange
           >
             <SWRProvider>

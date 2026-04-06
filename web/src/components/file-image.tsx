@@ -21,7 +21,7 @@ const ImageErrorFallback = ({
 }) => (
   <div
     className={cn(
-      "flex items-center justify-center rounded-[20px] bg-muted",
+      "flex items-center justify-center rounded-[4px] bg-muted",
       size === "s" && "h-16 w-16",
       size === "m" && "h-32 w-32",
       size === "l" && "h-72 w-72",
@@ -178,7 +178,7 @@ export default function FilePreview({
   const renderFileIcon = () => (
     <div
       className={cn(
-        "flex h-16 w-16 items-center justify-center rounded-[20px] bg-muted text-muted-foreground",
+        "flex h-16 w-16 items-center justify-center rounded-[4px] bg-muted text-muted-foreground",
         className,
       )}
     >

@@ -31,7 +31,7 @@ const AutomationButton = React.forwardRef<
           <button
             ref={ref}
             className={cn(
-              "inline-flex h-10 w-36 items-center justify-center gap-2 rounded-[16px] border border-input bg-card px-4 text-sm font-medium text-foreground transition-colors hover:bg-accent",
+              "inline-flex h-10 w-36 items-center justify-center gap-2 rounded-[4px] border border-input bg-card px-4 text-sm font-medium text-foreground transition-colors hover:bg-accent",
               isMobile && "w-full",
               className,
             )}

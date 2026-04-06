@@ -5,27 +5,27 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-[16px] text-sm font-medium transition-[background-color,border-color,color,transform] duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-50 active:scale-[0.98] [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-[4px] text-sm font-medium transition-colors duration-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
   {
     variants: {
       variant: {
         default:
-          "border border-transparent bg-primary text-primary-foreground hover:bg-[#cc001f]",
+          "border border-transparent bg-primary text-primary-foreground hover:opacity-90",
         destructive:
-          "border border-transparent bg-destructive text-destructive-foreground hover:bg-destructive/90",
+          "border border-transparent bg-destructive text-destructive-foreground hover:opacity-90",
         outline:
-          "border border-input bg-card text-foreground hover:border-[#bcbcb3] hover:bg-accent",
+          "border border-input bg-card text-foreground hover:bg-accent",
         secondary:
-          "border border-transparent bg-secondary text-secondary-foreground hover:bg-[#d9d9d3]",
+          "border border-transparent bg-secondary text-secondary-foreground hover:opacity-90",
         ghost: "border border-transparent bg-transparent text-foreground hover:bg-accent",
-        link: "rounded-none border-none p-0 text-foreground underline-offset-4 hover:text-primary hover:underline",
+        link: "rounded-none border-none p-0 text-foreground underline underline-offset-4 hover:opacity-80",
       },
       size: {
-        default: "h-10 px-4 py-2",
+        default: "h-9 px-5 py-1",
         xs: "h-7 px-2.5 py-1 text-xs",
-        sm: "h-9 px-3 text-xs",
-        lg: "h-11 px-6 text-sm",
-        icon: "h-10 w-10 rounded-full",
+        sm: "h-8 px-3 text-xs",
+        lg: "h-10 px-6 text-sm",
+        icon: "h-9 w-9",
       },
     },
     defaultVariants: {
