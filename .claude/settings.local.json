@@ -5,7 +5,8 @@
       "Bash(npx next:*)",
       "Bash(python -c \"import ast; ast.parse\\(open\\('app/tdlib_file_mapper.py'\\).read\\(\\)\\); print\\('mapper OK'\\); ast.parse\\(open\\('app/tdlib_downloads.py'\\).read\\(\\)\\); print\\('downloads OK'\\)\")",
       "Bash(python -c \"import ast; ast.parse\\(open\\('app/db.py'\\).read\\(\\)\\); print\\('OK'\\)\")",
-      "Bash(python -c \"import ast; ast.parse\\(open\\('app/db.py'\\).read\\(\\)\\); ast.parse\\(open\\('app/main.py'\\).read\\(\\)\\); print\\('All OK'\\)\")"
+      "Bash(python -c \"import ast; ast.parse\\(open\\('app/db.py'\\).read\\(\\)\\); ast.parse\\(open\\('app/main.py'\\).read\\(\\)\\); print\\('All OK'\\)\")",
+      "Bash(python -c \"from app.main import app; print\\('routes:', len\\(app.routes\\)\\)\")"
     ]
   }
 }
