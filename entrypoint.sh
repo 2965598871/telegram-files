@@ -56,6 +56,26 @@ start_services() {
     NGINX_PID=$!
 }
 
+monitor_services() {
+    while true; do
+        if [ -n "$BACKEND_PID" ] && ! kill -0 "$BACKEND_PID" 2>/dev/null; then
+            echo "Python service exited, stopping container..."
+            kill -TERM "$NGINX_PID" 2>/dev/null || true
+            wait "$BACKEND_PID"
+            exit $?
+        fi
+
+        if [ -n "$NGINX_PID" ] && ! kill -0 "$NGINX_PID" 2>/dev/null; then
+            echo "Nginx service exited, stopping container..."
+            kill -TERM "$BACKEND_PID" 2>/dev/null || true
+            wait "$NGINX_PID"
+            exit $?
+        fi
+
+        sleep 1
+    done
+}
+
 # Set up signal handlers
 trap cleanup TERM INT
 
@@ -68,5 +88,5 @@ setup_permissions
 # Start services
 start_services
 
-# Wait for all services to complete
-wait
+# Exit the container if either child process dies so restart policies can work.
+monitor_services

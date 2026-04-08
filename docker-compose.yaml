@@ -13,7 +13,7 @@ services:
     #      telegram-files-mysql:
     #        condition: service_healthy
     healthcheck:
-      test: [ "CMD", "curl", "-f", "http://127.0.0.1/api/health" ]
+      test: [ "CMD", "curl", "-f", "http://127.0.0.1:8080/health" ]
       interval: 10s
       retries: 3
       timeout: 10s
