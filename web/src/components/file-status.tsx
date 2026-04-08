@@ -88,6 +88,21 @@ export default function FileStatus({
       className={cn("flex items-center justify-center space-x-2", className)}
     >
       <AnimatePresence>
+        {file.alreadyDownloaded && !file.loaded && (
+          <motion.div
+            key="archive-match"
+            variants={badgeVariants}
+            initial="initial"
+            animate="animate"
+            exit="exit"
+          >
+            <TooltipWrapper content="Already in your archive">
+              <Badge className="h-7 bg-sky-100 text-xs text-sky-900 dark:bg-sky-950 dark:text-sky-100">
+                Already downloaded
+              </Badge>
+            </TooltipWrapper>
+          </motion.div>
+        )}
         {file.transferStatus === "idle" && (
           <motion.div
             key="download-status"
@@ -97,12 +112,12 @@ export default function FileStatus({
             exit="exit"
           >
             <TooltipWrapper content="Download Status">
-                <Badge
-                  className={cn(
-                    "h-7 text-xs",
-                    DOWNLOAD_STATUS[file.downloadStatus].className,
-                    isMobile && "",
-                  )}
+              <Badge
+                className={cn(
+                  "h-7 text-xs",
+                  DOWNLOAD_STATUS[file.downloadStatus].className,
+                  isMobile && "",
+                )}
               >
                 {DOWNLOAD_STATUS[file.downloadStatus].text}
               </Badge>

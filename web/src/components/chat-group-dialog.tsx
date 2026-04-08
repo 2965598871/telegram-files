@@ -46,6 +46,8 @@ export default function ChatGroupDialog({
     () => (chats ?? []).filter((chat) => chat.kind !== "group"),
     [chats],
   );
+  const trimmedName = name.trim();
+  const canSave = trimmedName.length > 0 && selectedChatIds.length >= 2;
 
   const resetForm = () => {
     setEditingGroupId(undefined);
@@ -69,11 +71,19 @@ export default function ChatGroupDialog({
   const handleEdit = (group: TelegramChat) => {
     setEditingGroupId(group.groupId);
     setName(group.name);
-    setSelectedChatIds(group.chatIds ?? []);
+    setSelectedChatIds([...(group.chatIds ?? [])]);
   };
 
   const handleSave = async () => {
     if (!accountId) {
+      return;
+    }
+
+    if (!canSave) {
+      toast({
+        variant: "error",
+        description: "A group chat needs a name and at least 2 chats.",
+      });
       return;
     }
 
@@ -94,6 +104,7 @@ export default function ChatGroupDialog({
       });
       await syncData();
       resetForm();
+      setOpen(false);
     } catch (error) {
       toast({
         variant: "error",
@@ -185,6 +196,7 @@ export default function ChatGroupDialog({
                       </div>
                       <div className="flex gap-2">
                         <Button
+                          type="button"
                           size="sm"
                           variant="outline"
                           onClick={() => handleEdit(group)}
@@ -192,6 +204,7 @@ export default function ChatGroupDialog({
                           Edit
                         </Button>
                         <Button
+                          type="button"
                           size="sm"
                           variant="destructive"
                           disabled={deletingGroupId === group.groupId}
@@ -268,9 +281,18 @@ export default function ChatGroupDialog({
                   ))
                 )}
               </div>
+              {selectedChatIds.length > 0 && selectedChatIds.length < 2 ? (
+                <p className="text-xs text-destructive">
+                  Group chats need at least 2 chats.
+                </p>
+              ) : null}
             </div>
 
-            <Button disabled={isSaving} onClick={() => void handleSave()}>
+            <Button
+              type="button"
+              disabled={isSaving || !canSave}
+              onClick={() => void handleSave()}
+            >
               {editingGroupId ? "Save group" : "Create group"}
             </Button>
           </div>

@@ -84,6 +84,7 @@ async def telegram_files(
             return await asyncio.to_thread(
                 _parse_link_files,
                 td_manager,
+                db=db,
                 telegram_id=telegramId,
                 root_path=str(account.get("rootPath") or ""),
                 link=link,
@@ -166,6 +167,7 @@ async def telegram_files(
         return await asyncio.to_thread(
             _load_tdlib_chat_files,
             td_manager,
+            db=db,
             telegram_id=telegramId,
             root_path=str(account.get("rootPath") or ""),
             chat_id=chatId,

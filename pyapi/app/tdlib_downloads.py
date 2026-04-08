@@ -8,6 +8,7 @@ from pathlib import Path
 from threading import Lock
 from typing import Any, Callable
 
+from .file_record_ops import find_file_by_unique as _find_file_by_unique
 from .tdlib import TdlibAuthManager
 from .tdlib_file_mapper import (
     extract_td_message_file as _extract_td_message_file,
@@ -541,9 +542,59 @@ def td_status_payload_from_td_file(
     }
 
 
+def _apply_completed_duplicate(
+    db: sqlite3.Connection | None,
+    *,
+    telegram_id: int,
+    target_file_id: int,
+    file_payload: dict[str, Any],
+) -> dict[str, Any] | None:
+    if db is None:
+        return None
+
+    unique_id = str(file_payload.get("uniqueId") or "").strip()
+    if not unique_id:
+        return None
+
+    existing = _find_file_by_unique(
+        db,
+        telegram_id=telegram_id,
+        unique_id=unique_id,
+    )
+    if existing is None:
+        return None
+
+    existing_status = str(existing["download_status"] or "idle").strip().lower()
+    existing_path = str(existing["local_path"] or "").strip()
+    if existing_status != "completed" or not existing_path:
+        return None
+
+    file_payload["alreadyDownloaded"] = True
+    file_payload["downloadStatus"] = "completed"
+    file_payload["localPath"] = existing_path
+    file_payload["downloadedSize"] = max(
+        _int_or_default(existing["downloaded_size"], 0),
+        _int_or_default(existing["size"], 0),
+        _int_or_default(file_payload.get("downloadedSize"), 0),
+    )
+    existing_completion = _int_or_default(existing["completion_date"], 0)
+    if existing_completion > 0:
+        file_payload["completionDate"] = existing_completion
+
+    cache_tdlib_file_preview(
+        telegram_id=telegram_id,
+        unique_id=unique_id,
+        file_id=target_file_id,
+        mime_type=str(file_payload.get("mimeType") or "").strip() or None,
+        local_path=existing_path,
+    )
+    return file_payload
+
+
 def start_tdlib_download_for_message(
     td_manager: TdlibAuthManager,
     *,
+    db: sqlite3.Connection | None = None,
     telegram_id: int,
     root_path: str,
     chat_id: int,
@@ -590,6 +641,25 @@ def start_tdlib_download_for_message(
     if file_id != 0 and target_file_id != file_id:
         target_file_id = file_id
 
+    file_payload = _td_message_to_file(telegram_id, message_result)
+    if file_payload is None:
+        raise RuntimeError("Failed to map TDLib file payload")
+
+    file_payload["threadChatId"] = _int_or_default(message_thread.get("chat_id"), 0)
+    file_payload["messageThreadId"] = _int_or_default(
+        message_thread.get("message_thread_id"),
+        _int_or_default(file_payload.get("messageThreadId"), 0),
+    )
+
+    duplicate_payload = _apply_completed_duplicate(
+        db,
+        telegram_id=telegram_id,
+        target_file_id=target_file_id,
+        file_payload=file_payload,
+    )
+    if duplicate_payload is not None:
+        return duplicate_payload
+
     start_result = td_manager.request(
         account_key,
         {
@@ -633,16 +703,6 @@ def start_tdlib_download_for_message(
     )
     if str(download_result.get("@type") or "") == "error":
         download_result = {"@type": "ok"}
-
-    file_payload = _td_message_to_file(telegram_id, message_result)
-    if file_payload is None:
-        raise RuntimeError("Failed to map TDLib file payload")
-
-    file_payload["threadChatId"] = _int_or_default(message_thread.get("chat_id"), 0)
-    file_payload["messageThreadId"] = _int_or_default(
-        message_thread.get("message_thread_id"),
-        _int_or_default(file_payload.get("messageThreadId"), 0),
-    )
 
     if str(download_result.get("@type") or "") == "file":
         local = (

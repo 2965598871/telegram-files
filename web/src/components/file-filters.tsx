@@ -552,26 +552,52 @@ export default function FileFilters({
                   </div>
 
                   {!localFilters.offline && (
-                    <div className={cn(panelClassName, "flex items-center justify-between gap-3")}>
-                      <div>
-                        <Label htmlFor="notDownload" className="text-sm font-medium text-foreground">
-                          Only not downloaded
-                        </Label>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          Focus on files still waiting to be saved.
-                        </p>
+                    <div className="space-y-4">
+                      <div className={cn(panelClassName, "flex items-center justify-between gap-3")}>
+                        <div>
+                          <Label htmlFor="notDownload" className="text-sm font-medium text-foreground">
+                            Only not downloaded
+                          </Label>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            Focus on files still waiting to be saved.
+                          </p>
+                        </div>
+                        <Switch
+                          id="notDownload"
+                          checked={localFilters.downloadStatus === "idle"}
+                          onCheckedChange={(checked) => {
+                            setLocalFilters((prev) => ({
+                              ...prev,
+                              downloadStatus: checked ? "idle" : undefined,
+                              alreadyDownloaded: checked ? false : prev.alreadyDownloaded,
+                            }));
+                          }}
+                          aria-label="Not Download"
+                        />
                       </div>
-                      <Switch
-                        id="notDownload"
-                        checked={localFilters.downloadStatus === "idle"}
-                        onCheckedChange={(checked) => {
-                          setLocalFilters((prev) => ({
-                            ...prev,
-                            downloadStatus: checked ? "idle" : undefined,
-                          }));
-                        }}
-                        aria-label="Not Download"
-                      />
+
+                      <div className={cn(panelClassName, "flex items-center justify-between gap-3")}>
+                        <div>
+                          <Label htmlFor="alreadyDownloaded" className="text-sm font-medium text-foreground">
+                            Only already downloaded
+                          </Label>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            Show live Telegram files that already exist in your archive.
+                          </p>
+                        </div>
+                        <Switch
+                          id="alreadyDownloaded"
+                          checked={Boolean(localFilters.alreadyDownloaded)}
+                          onCheckedChange={(checked) => {
+                            setLocalFilters((prev) => ({
+                              ...prev,
+                              alreadyDownloaded: checked,
+                              downloadStatus: checked ? undefined : prev.downloadStatus,
+                            }));
+                          }}
+                          aria-label="Already Downloaded"
+                        />
+                      </div>
                     </div>
                   )}
 

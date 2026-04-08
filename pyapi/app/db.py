@@ -222,6 +222,10 @@ def _serialize_file_row(
         "transferStatus": str(row["transfer_status"] or "idle"),
         "extra": _parse_extra(row["extra"]),
         "tags": row["tags"],
+        "alreadyDownloaded": (
+            str(row["download_status"] or "").strip().lower() == "completed"
+            and str(row["local_path"] or "").strip() != ""
+        ),
         "loaded": True,
         "threadChatId": _safe_int(row["thread_chat_id"]),
         "messageThreadId": _safe_int(row["message_thread_id"]),
@@ -331,6 +335,13 @@ def list_files(
     if transfer_status:
         where_clauses.append("transfer_status = ?")
         params.append(transfer_status)
+
+    already_downloaded = _to_bool(filters.get("alreadyDownloaded"))
+    if already_downloaded is not None:
+        condition = (
+            "download_status = 'completed' AND TRIM(COALESCE(local_path, '')) != ''"
+        )
+        where_clauses.append(condition if already_downloaded else f"NOT ({condition})")
 
     tags = [
         tag.strip() for tag in (filters.get("tags") or "").split(",") if tag.strip()

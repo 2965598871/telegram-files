@@ -65,6 +65,7 @@ export type TelegramFile = {
   transferStatus?: TransferStatus;
   extra?: PhotoExtra | VideoExtra;
   tags?: string;
+  alreadyDownloaded?: boolean;
   loaded: boolean;
   threadChatId: number;
   messageThreadId: number;
@@ -127,6 +128,7 @@ export type FileFilter = {
   type: FileType | "all";
   downloadStatus?: DownloadStatus;
   transferStatus?: TransferStatus;
+  alreadyDownloaded?: boolean;
   offline: boolean;
   tags: string[];
   dateType?: "sent" | "downloaded";

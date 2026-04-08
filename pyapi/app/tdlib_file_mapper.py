@@ -442,6 +442,7 @@ def td_message_to_file(
         "transferStatus": "idle",
         "extra": extracted["extra"],
         "tags": None,
+        "alreadyDownloaded": False,
         "loaded": False,
         "threadChatId": 0,
         "messageThreadId": _int_or_default(message.get("message_thread_id"), 0),

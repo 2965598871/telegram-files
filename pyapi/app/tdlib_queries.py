@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import sqlite3
 import time
 from typing import Any
 
+from .file_record_ops import find_file_by_unique as _find_file_by_unique
 from .tdlib import TdlibAuthManager
 from .tdlib_file_mapper import td_message_to_file
 
@@ -325,6 +327,7 @@ def tdlib_test_network(
 def parse_link_files(
     td_manager: TdlibAuthManager,
     *,
+    db: sqlite3.Connection | None = None,
     telegram_id: int,
     root_path: str,
     link: str,
@@ -390,6 +393,14 @@ def parse_link_files(
         if file_payload is not None
     ]
     converted_files = _apply_media_album_captions(converted_files)
+    converted_files = [
+        _apply_archive_download_state(
+            db,
+            telegram_id=telegram_id,
+            file_payload=file_payload,
+        )
+        for file_payload in converted_files
+    ]
 
     return {
         "files": converted_files,
@@ -439,6 +450,14 @@ def _matches_td_file_filters(
     ):
         return False
 
+    normalized_already_downloaded = (
+        str(filters.get("alreadyDownloaded") or "").strip().lower()
+    )
+    if normalized_already_downloaded:
+        expected = normalized_already_downloaded in {"true", "1", "yes", "on"}
+        if bool(file_payload.get("alreadyDownloaded")) != expected:
+            return False
+
     message_thread_id_filter = _int_or_default(filters.get("messageThreadId"), 0)
     if (
         message_thread_id_filter != 0
@@ -451,6 +470,54 @@ def _matches_td_file_filters(
         return False
 
     return True
+
+
+def _apply_archive_download_state(
+    db: sqlite3.Connection | None,
+    *,
+    telegram_id: int,
+    file_payload: dict[str, Any],
+) -> dict[str, Any]:
+    normalized = dict(file_payload)
+    normalized["alreadyDownloaded"] = False
+    if db is None:
+        return normalized
+
+    unique_id = str(normalized.get("uniqueId") or "").strip()
+    if not unique_id:
+        return normalized
+
+    existing = _find_file_by_unique(
+        db,
+        telegram_id=telegram_id,
+        unique_id=unique_id,
+    )
+    if existing is None:
+        return normalized
+
+    existing_status = str(existing["download_status"] or "idle").strip().lower()
+    existing_path = str(existing["local_path"] or "").strip()
+    if existing_status != "completed" or not existing_path:
+        return normalized
+
+    normalized["alreadyDownloaded"] = True
+    normalized["downloadStatus"] = "completed"
+    normalized["localPath"] = existing_path
+    normalized["downloadedSize"] = max(
+        _int_or_default(existing["downloaded_size"], 0),
+        _int_or_default(existing["size"], 0),
+        _int_or_default(normalized.get("downloadedSize"), 0),
+    )
+
+    completion_date = _int_or_default(existing["completion_date"], 0)
+    if completion_date > 0:
+        normalized["completionDate"] = completion_date
+
+    transfer_status = str(existing["transfer_status"] or "").strip()
+    if transfer_status:
+        normalized["transferStatus"] = transfer_status
+
+    return normalized
 
 
 def _apply_media_album_captions(
@@ -488,6 +555,7 @@ def _apply_media_album_captions(
 def load_tdlib_chat_files(
     td_manager: TdlibAuthManager,
     *,
+    db: sqlite3.Connection | None = None,
     telegram_id: int,
     root_path: str,
     chat_id: int,
@@ -556,6 +624,14 @@ def load_tdlib_chat_files(
             batch_files.append(file_payload)
 
         batch_files = _apply_media_album_captions(batch_files)
+        batch_files = [
+            _apply_archive_download_state(
+                db,
+                telegram_id=telegram_id,
+                file_payload=file_payload,
+            )
+            for file_payload in batch_files
+        ]
         for file_payload in batch_files:
             if not _matches_td_file_filters(file_payload, filters):
                 continue

@@ -87,6 +87,7 @@ async def file_start_download_route(
                 file_record = await asyncio.to_thread(
                     _start_tdlib_download_for_message,
                     td_manager,
+                    db=db,
                     telegram_id=telegramId,
                     root_path=str(account.get("rootPath") or ""),
                     chat_id=chat_id,
@@ -134,7 +135,10 @@ async def file_start_download_route(
         session_id=session_id,
     )
 
-    if started_via_tdlib:
+    if (
+        started_via_tdlib
+        and str(file_record.get("downloadStatus") or "").strip() == "downloading"
+    ):
         unique_id = str(file_record.get("uniqueId") or "").strip()
         monitor_file_id = _int_or_default(file_record.get("id"), file_id)
         _ensure_tdlib_download_monitor(
@@ -453,6 +457,7 @@ async def files_start_download_multiple(
                     file_record = await asyncio.to_thread(
                         _start_tdlib_download_for_message,
                         td_manager,
+                        db=db,
                         telegram_id=item["telegramId"],
                         root_path=root_path,
                         chat_id=item["chatId"],
@@ -503,7 +508,10 @@ async def files_start_download_multiple(
             session_id=session_id,
         )
 
-        if started_via_tdlib:
+        if (
+            started_via_tdlib
+            and str(file_record.get("downloadStatus") or "").strip() == "downloading"
+        ):
             _ensure_tdlib_download_monitor(
                 request.app,
                 session_id=session_id,

@@ -7,7 +7,15 @@ from contextlib import asynccontextmanager
 from typing import Any
 from uuid import uuid4
 
-from fastapi import FastAPI, HTTPException, Query, Request, Response, WebSocket, WebSocketDisconnect
+from fastapi import (
+    FastAPI,
+    HTTPException,
+    Query,
+    Request,
+    Response,
+    WebSocket,
+    WebSocketDisconnect,
+)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, PlainTextResponse
 
@@ -26,7 +34,7 @@ from .automation_workers import (
     background_workers_loop as _background_workers_loop,
     reset_worker_state as _reset_worker_state,
 )
-from .config import AppConfig
+from .config import AppConfig, _load_dotenv_if_present
 from .db import create_connection, init_schema
 from .download_runtime import (
     _avg_speed_interval,
@@ -61,10 +69,11 @@ async def lifespan(app: FastAPI):
                 application_version=config.version,
                 log_level=config.telegram_log_level,
                 shared_lib_path=config.tdlib_shared_lib or None,
-                on_authorization_state=lambda telegram_id,
-                state: loop.call_soon_threadsafe(
-                    lambda: asyncio.create_task(
-                        _handle_tdlib_authorization_state(app, telegram_id, state)
+                on_authorization_state=lambda telegram_id, state: (
+                    loop.call_soon_threadsafe(
+                        lambda: asyncio.create_task(
+                            _handle_tdlib_authorization_state(app, telegram_id, state)
+                        )
                     )
                 ),
             )
@@ -96,16 +105,14 @@ async def lifespan(app: FastAPI):
                 tdlib_account_root_path=_tdlib_account_root_path,
                 emit_file_status=_emit_worker_file_status,
                 td_file_status_payload=_td_file_status_payload,
-                ensure_tdlib_download_monitor=lambda worker_app,
-                session_id,
-                telegram_id,
-                file_id,
-                unique_id: _ensure_tdlib_download_monitor(
-                    worker_app,
-                    session_id=session_id,
-                    telegram_id=telegram_id,
-                    file_id=file_id,
-                    unique_id=unique_id,
+                ensure_tdlib_download_monitor=lambda worker_app, session_id, telegram_id, file_id, unique_id: (
+                    _ensure_tdlib_download_monitor(
+                        worker_app,
+                        session_id=session_id,
+                        telegram_id=telegram_id,
+                        file_id=file_id,
+                        unique_id=unique_id,
+                    )
                 ),
                 avg_speed_interval=_avg_speed_interval,
                 persist_speed_statistics=_persist_speed_statistics,
@@ -125,6 +132,8 @@ async def lifespan(app: FastAPI):
             tdlib_manager.close()
         conn.close()
 
+
+_load_dotenv_if_present()
 
 app = FastAPI(title="telegram-files python backend", lifespan=lifespan)
 

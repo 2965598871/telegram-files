@@ -18,6 +18,7 @@ const DEFAULT_FILTERS: FileFilter = {
   type: "media",
   downloadStatus: undefined,
   transferStatus: undefined,
+  alreadyDownloaded: false,
   offline: false,
   tags: [],
 };
@@ -69,6 +70,7 @@ export function useFiles(
       ...(filters.type && { type: filters.type }),
       ...(filters.downloadStatus && { downloadStatus: filters.downloadStatus }),
       ...(filters.transferStatus && { transferStatus: filters.transferStatus }),
+      ...(filters.alreadyDownloaded && { alreadyDownloaded: "true" }),
       ...(filters.offline && { offline: "true" }),
       ...(filters.tags.length > 0 && {
         tags: filters.tags.join(","),

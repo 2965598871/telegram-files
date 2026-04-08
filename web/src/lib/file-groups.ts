@@ -15,15 +15,28 @@ export function getFileGroupKey(file: TelegramFile): string {
 }
 
 export function groupFilesByMessage(files: TelegramFile[]): FileGroup[] {
-  const groups: FileGroup[] = [];
+  const groups = new Map<string, FileGroup>();
+  const seenFiles = new Map<string, Set<string>>();
+
   for (const file of files) {
     const key = getFileGroupKey(file);
-    const previous = groups[groups.length - 1];
-    if (previous && previous.key === key) {
-      previous.files.push(file);
+    const fileKey = file.uniqueId || `${file.chatId}:${file.messageId}:${file.id}`;
+
+    let group = groups.get(key);
+    if (!group) {
+      group = { key, files: [] };
+      groups.set(key, group);
+      seenFiles.set(key, new Set());
+    }
+
+    const groupSeenFiles = seenFiles.get(key)!;
+    if (groupSeenFiles.has(fileKey)) {
       continue;
     }
-    groups.push({ key, files: [file] });
+
+    groupSeenFiles.add(fileKey);
+    group.files.push(file);
   }
-  return groups;
+
+  return Array.from(groups.values());
 }

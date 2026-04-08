@@ -41,6 +41,8 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
   children,
 }) => {
   const searchParams = useSearchParams();
+  const telegramId = searchParams.get("id")?.trim();
+  const wsUrl = telegramId ? `${WS_URL}?telegramId=${telegramId}` : WS_URL;
   const [isReady, setIsReady] = useState(false);
   const [accountDownloadSpeed, setAccountDownloadSpeed] = useState({
     speed: 0,
@@ -54,14 +56,11 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
   });
 
   const { sendMessage, lastJsonMessage, readyState } =
-    useWebSocket<WebSocketMessage>(
-      `${WS_URL}?telegramId=${searchParams.get("id") ?? ""}`,
-      {
-        shouldReconnect: (closeEvent) => true,
-        reconnectAttempts: 3,
-        reconnectInterval: 3000,
-      },
-    );
+    useWebSocket<WebSocketMessage>(wsUrl, {
+      shouldReconnect: (closeEvent) => true,
+      reconnectAttempts: 3,
+      reconnectInterval: 3000,
+    });
 
   const connectionStatus = {
     [ReadyState.CONNECTING]: "Connecting",
