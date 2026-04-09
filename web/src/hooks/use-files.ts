@@ -29,6 +29,9 @@ type FileResponse = {
   nextFromMessageId: number;
 };
 
+const getFileStatusKey = (fileId: number | undefined, uniqueId: string) =>
+  `${fileId ?? 0}:${uniqueId}`;
+
 export function useFiles(
   accountId: string,
   chatId: string,
@@ -145,9 +148,10 @@ export function useFiles(
     };
 
     if (data.removed) {
+      const statusKey = getFileStatusKey(data.fileId, data.uniqueId);
       setLatestFileStatus((prev) => ({
         ...prev,
-        [data.uniqueId]: {
+        [statusKey]: {
           fileId: data.fileId,
           downloadStatus: "idle",
           localPath: undefined,
@@ -160,20 +164,21 @@ export function useFiles(
       return;
     }
 
+    const statusKey = getFileStatusKey(data.fileId, data.uniqueId);
     setLatestFileStatus((prev) => ({
       ...prev,
-      [data.uniqueId]: {
+      [statusKey]: {
         fileId: data.fileId,
         downloadStatus:
-          data.downloadStatus ?? prev[data.uniqueId]?.downloadStatus,
-        localPath: data.localPath ?? prev[data.uniqueId]?.localPath,
+          data.downloadStatus ?? prev[statusKey]?.downloadStatus,
+        localPath: data.localPath ?? prev[statusKey]?.localPath,
         completionDate:
-          data.completionDate ?? prev[data.uniqueId]?.completionDate,
+          data.completionDate ?? prev[statusKey]?.completionDate,
         downloadedSize:
-          data.downloadedSize ?? prev[data.uniqueId]?.downloadedSize,
+          data.downloadedSize ?? prev[statusKey]?.downloadedSize,
         transferStatus:
-          data.transferStatus ?? prev[data.uniqueId]?.transferStatus,
-        thumbnailFile: data.thumbnailFile ?? prev[data.uniqueId]?.thumbnailFile,
+          data.transferStatus ?? prev[statusKey]?.transferStatus,
+        thumbnailFile: data.thumbnailFile ?? prev[statusKey]?.thumbnailFile,
       },
     }));
   }, [lastJsonMessage]);
@@ -192,28 +197,29 @@ export function useFiles(
     const files: TelegramFile[] = [];
     pages.forEach((page) => {
       page.files.forEach((file) => {
-        if (file.originalDeleted && latestFilesStatus[file.uniqueId]?.removed) {
+        const statusKey = getFileStatusKey(file.id, file.uniqueId);
+        if (file.originalDeleted && latestFilesStatus[statusKey]?.removed) {
           return;
         }
         files.push({
           ...file,
-          id: latestFilesStatus[file.uniqueId]?.fileId ?? file.id,
+          id: latestFilesStatus[statusKey]?.fileId ?? file.id,
           downloadStatus:
-            latestFilesStatus[file.uniqueId]?.downloadStatus ??
+            latestFilesStatus[statusKey]?.downloadStatus ??
             file.downloadStatus,
           localPath:
-            latestFilesStatus[file.uniqueId]?.localPath ?? file.localPath,
+            latestFilesStatus[statusKey]?.localPath ?? file.localPath,
           completionDate:
-            latestFilesStatus[file.uniqueId]?.completionDate ??
+            latestFilesStatus[statusKey]?.completionDate ??
             file.completionDate,
           downloadedSize:
-            latestFilesStatus[file.uniqueId]?.downloadedSize ??
+            latestFilesStatus[statusKey]?.downloadedSize ??
             file.downloadedSize,
           transferStatus:
-            latestFilesStatus[file.uniqueId]?.transferStatus ??
+            latestFilesStatus[statusKey]?.transferStatus ??
             file.transferStatus,
           thumbnailFile:
-            latestFilesStatus[file.uniqueId]?.thumbnailFile ??
+            latestFilesStatus[statusKey]?.thumbnailFile ??
             file.thumbnailFile,
         });
       });

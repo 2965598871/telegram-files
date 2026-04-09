@@ -59,7 +59,7 @@ AUTO_DOWNLOAD_WAITING: dict[int, deque[dict[str, int]]] = {}
 AUTO_DOWNLOAD_WAITING_KEYS: set[tuple[int, int, int]] = set()
 AUTO_DOWNLOAD_COMMENT_THREADS: dict[tuple[int, int, int], dict[str, Any]] = {}
 TRANSFER_WAITING: deque[dict[str, Any]] = deque()
-TRANSFER_WAITING_KEYS: set[tuple[int, str]] = set()
+TRANSFER_WAITING_KEYS: set[tuple[int, int, str]] = set()
 
 
 @dataclass(frozen=True)
@@ -85,11 +85,12 @@ def reset_worker_state() -> None:
 
 def queue_transfer_candidate(candidate: dict[str, Any]) -> None:
     telegram_id = _int_or_default(candidate.get("telegramId"), 0)
+    file_id = _int_or_default(candidate.get("fileId") or candidate.get("id"), 0)
     unique_id = str(candidate.get("uniqueId") or "").strip()
     if telegram_id <= 0 or not unique_id:
         return
 
-    key = (telegram_id, unique_id)
+    key = (telegram_id, file_id, unique_id)
     if key in TRANSFER_WAITING_KEYS:
         return
 
@@ -99,7 +100,7 @@ def queue_transfer_candidate(candidate: dict[str, Any]) -> None:
             "telegramId": telegram_id,
             "chatId": _int_or_default(candidate.get("chatId"), 0),
             "uniqueId": unique_id,
-            "fileId": _int_or_default(candidate.get("id"), 0),
+            "fileId": file_id,
         }
     )
 
@@ -426,6 +427,7 @@ def _pop_transfer_candidate() -> dict[str, Any] | None:
     TRANSFER_WAITING_KEYS.discard(
         (
             _int_or_default(candidate.get("telegramId"), 0),
+            _int_or_default(candidate.get("fileId"), 0),
             str(candidate.get("uniqueId") or "").strip(),
         )
     )
@@ -1260,6 +1262,7 @@ async def _run_transfer_tick(deps: WorkerDeps, app: FastAPI) -> None:
     db: sqlite3.Connection = app.state.db
     telegram_id = _int_or_default(candidate.get("telegramId"), 0)
     chat_id = _int_or_default(candidate.get("chatId"), 0)
+    file_id = _int_or_default(candidate.get("fileId"), 0)
     unique_id = str(candidate.get("uniqueId") or "")
     if telegram_id <= 0 or chat_id == 0 or not unique_id:
         return
@@ -1286,6 +1289,7 @@ async def _run_transfer_tick(deps: WorkerDeps, app: FastAPI) -> None:
     row = _db_file_for_transfer(
         db,
         telegram_id=telegram_id,
+        file_id=file_id,
         unique_id=unique_id,
     )
     if row is None:
@@ -1294,6 +1298,7 @@ async def _run_transfer_tick(deps: WorkerDeps, app: FastAPI) -> None:
     in_progress_payload = _db_update_transfer_status(
         db,
         telegram_id=telegram_id,
+        file_id=file_id,
         unique_id=unique_id,
         transfer_status="transferring",
     )
@@ -1320,6 +1325,7 @@ async def _run_transfer_tick(deps: WorkerDeps, app: FastAPI) -> None:
     final_payload = _db_update_transfer_status(
         db,
         telegram_id=telegram_id,
+        file_id=file_id,
         unique_id=unique_id,
         transfer_status=transfer_status,
         local_path=resolved_path,

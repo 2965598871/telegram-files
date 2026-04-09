@@ -33,6 +33,28 @@ def find_file_by_unique(
     ).fetchone()
 
 
+def find_file_by_identity(
+    db: sqlite3.Connection,
+    *,
+    telegram_id: int,
+    file_id: int,
+    unique_id: str,
+) -> sqlite3.Row | None:
+    if file_id <= 0 or not unique_id.strip():
+        return None
+
+    return db.execute(
+        """
+        SELECT *
+        FROM file_record
+        WHERE telegram_id = ? AND id = ? AND unique_id = ?
+        ORDER BY message_id DESC
+        LIMIT 1
+        """,
+        (telegram_id, file_id, unique_id.strip()),
+    ).fetchone()
+
+
 def _upsert_tdlib_thumbnail_record(
     db: sqlite3.Connection,
     *,
@@ -169,13 +191,15 @@ def upsert_tdlib_file_record(
     file_payload: dict[str, Any],
 ) -> None:
     telegram_id = _int_or_default(file_payload.get("telegramId"), 0)
+    file_id = _int_or_default(file_payload.get("id"), 0)
     unique_id = str(file_payload.get("uniqueId") or "").strip()
     if telegram_id <= 0 or not unique_id:
         return
 
-    existing = find_file_by_unique(
+    existing = find_file_by_identity(
         db,
         telegram_id=telegram_id,
+        file_id=file_id,
         unique_id=unique_id,
     )
 
@@ -202,7 +226,7 @@ def upsert_tdlib_file_record(
     )
 
     payload_values = {
-        "id": _int_or_default(file_payload.get("id"), 0),
+        "id": file_id,
         "chat_id": _int_or_default(file_payload.get("chatId"), 0),
         "message_id": _int_or_default(file_payload.get("messageId"), 0),
         "media_album_id": _int_or_default(file_payload.get("mediaAlbumId"), 0),
@@ -345,7 +369,7 @@ def upsert_tdlib_file_record(
                 thread_chat_id = ?,
                 message_thread_id = ?,
                 reaction_count = ?
-            WHERE telegram_id = ? AND unique_id = ?
+            WHERE telegram_id = ? AND id = ? AND unique_id = ?
             """,
             (
                 payload_values["id"],
@@ -372,6 +396,7 @@ def upsert_tdlib_file_record(
                 payload_values["message_thread_id"],
                 payload_values["reaction_count"],
                 telegram_id,
+                payload_values["id"],
                 unique_id,
             ),
         )
@@ -393,9 +418,9 @@ def upsert_tdlib_file_record(
                 """
                 UPDATE file_record
                 SET thumbnail_unique_id = ?
-                WHERE telegram_id = ? AND unique_id = ?
+                WHERE telegram_id = ? AND id = ? AND unique_id = ?
                 """,
-                (linked_unique_id, telegram_id, unique_id),
+                (linked_unique_id, telegram_id, payload_values["id"], unique_id),
             )
 
     db.commit()
@@ -408,11 +433,18 @@ def update_tdlib_file_status(
     file_id: int,
     unique_id: str,
     status_payload: dict[str, Any],
-    on_completed: Callable[[sqlite3.Connection, int, str], None] | None = None,
+    on_completed: Callable[[sqlite3.Connection, int, int, str], None] | None = None,
 ) -> None:
     target = None
     normalized_unique = unique_id.strip()
-    if normalized_unique:
+    if normalized_unique and file_id > 0:
+        target = find_file_by_identity(
+            db,
+            telegram_id=telegram_id,
+            file_id=file_id,
+            unique_id=normalized_unique,
+        )
+    if target is None and normalized_unique:
         target = find_file_by_unique(
             db,
             telegram_id=telegram_id,
@@ -449,7 +481,7 @@ def update_tdlib_file_status(
             download_status = ?,
             local_path = ?,
             completion_date = ?
-        WHERE telegram_id = ? AND unique_id = ?
+        WHERE telegram_id = ? AND id = ? AND unique_id = ?
         """,
         (
             _int_or_default(status_payload.get("downloadedSize"), 0),
@@ -457,6 +489,7 @@ def update_tdlib_file_status(
             local_path,
             completion_value,
             telegram_id,
+            _int_or_default(target["id"], 0),
             resolved_unique,
         ),
     )
@@ -467,7 +500,7 @@ def update_tdlib_file_status(
         and download_status.strip().lower() == "completed"
         and local_path.strip()
     ):
-        on_completed(db, telegram_id, resolved_unique)
+        on_completed(db, telegram_id, _int_or_default(target["id"], 0), resolved_unique)
 
 
 def count_downloading_files(db: sqlite3.Connection, telegram_id: int) -> int:
@@ -522,8 +555,18 @@ def file_for_transfer(
     db: sqlite3.Connection,
     *,
     telegram_id: int,
+    file_id: int = 0,
     unique_id: str,
 ) -> sqlite3.Row | None:
+    row = find_file_by_identity(
+        db,
+        telegram_id=telegram_id,
+        file_id=file_id,
+        unique_id=unique_id,
+    )
+    if row is not None:
+        return row
+
     return db.execute(
         """
         SELECT *
@@ -540,6 +583,7 @@ def update_transfer_status(
     db: sqlite3.Connection,
     *,
     telegram_id: int,
+    file_id: int = 0,
     unique_id: str,
     transfer_status: str,
     local_path: str | None = None,
@@ -547,6 +591,7 @@ def update_transfer_status(
     row = file_for_transfer(
         db,
         telegram_id=telegram_id,
+        file_id=file_id,
         unique_id=unique_id,
     )
     if row is None:
@@ -558,9 +603,15 @@ def update_transfer_status(
         UPDATE file_record
         SET transfer_status = ?,
             local_path = ?
-        WHERE telegram_id = ? AND unique_id = ?
+        WHERE telegram_id = ? AND id = ? AND unique_id = ?
         """,
-        (transfer_status, next_local_path, telegram_id, unique_id),
+        (
+            transfer_status,
+            next_local_path,
+            telegram_id,
+            _int_or_default(row["id"], 0),
+            unique_id,
+        ),
     )
     db.commit()
 

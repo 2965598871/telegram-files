@@ -111,6 +111,60 @@ class TdlibQueriesTest(unittest.TestCase):
         self.assertEqual(file_item["downloadStatus"], "completed")
         self.assertEqual(file_item["localPath"], "D:/downloads/existing.jpg")
 
+    def test_load_chat_files_does_not_copy_transfer_status_from_other_file_id(
+        self,
+    ) -> None:
+        conn = sqlite3.connect(":memory:")
+        conn.row_factory = sqlite3.Row
+        init_schema(conn)
+        upsert_tdlib_file_record(
+            conn,
+            file_payload={
+                "id": 111,
+                "telegramId": 1,
+                "uniqueId": "dup-photo-1",
+                "messageId": 50,
+                "chatId": 100,
+                "mediaAlbumId": 0,
+                "fileName": "existing.jpg",
+                "type": "photo",
+                "mimeType": "image/jpeg",
+                "size": 1234,
+                "downloadedSize": 1234,
+                "thumbnail": "",
+                "downloadStatus": "completed",
+                "date": 1710000000,
+                "caption": "existing",
+                "localPath": "D:/downloads/existing.jpg",
+                "hasSensitiveContent": False,
+                "startDate": 0,
+                "completionDate": 1710000100000,
+                "transferStatus": "completed",
+                "extra": {"width": 640, "height": 480, "type": "x"},
+                "threadChatId": 0,
+                "messageThreadId": 0,
+                "reactionCount": 0,
+            },
+        )
+
+        with patch(
+            "app.tdlib_queries.load_tdlib_session_for_account", return_value=True
+        ):
+            result = load_tdlib_chat_files(
+                _FakeTdlibQueryManager(),
+                db=conn,
+                telegram_id=1,
+                root_path="D:/tdlib/account-1",
+                chat_id=100,
+                filters={"limit": "20"},
+            )
+
+        self.assertEqual(result["size"], 1)
+        file_item = result["files"][0]
+        self.assertTrue(file_item["alreadyDownloaded"])
+        self.assertEqual(file_item["downloadStatus"], "completed")
+        self.assertEqual(file_item["transferStatus"], "idle")
+
 
 if __name__ == "__main__":
     unittest.main()

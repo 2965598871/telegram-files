@@ -352,12 +352,13 @@ def _db_update_tdlib_file_status(
         file_id=file_id,
         unique_id=unique_id,
         status_payload=status_payload,
-        on_completed=lambda db_conn,
-        completed_telegram_id,
-        completed_unique_id: _queue_transfer_for_completed_file(
-            db_conn,
-            telegram_id=completed_telegram_id,
-            unique_id=completed_unique_id,
+        on_completed=lambda db_conn, completed_telegram_id, completed_file_id, completed_unique_id: (
+            _queue_transfer_for_completed_file(
+                db_conn,
+                telegram_id=completed_telegram_id,
+                file_id=completed_file_id,
+                unique_id=completed_unique_id,
+            )
         ),
     )
 
@@ -366,6 +367,7 @@ def _queue_transfer_for_completed_file(
     db: sqlite3.Connection,
     *,
     telegram_id: int,
+    file_id: int,
     unique_id: str,
 ) -> None:
     if telegram_id <= 0 or not unique_id:
@@ -374,6 +376,7 @@ def _queue_transfer_for_completed_file(
     row = _db_file_for_transfer(
         db,
         telegram_id=telegram_id,
+        file_id=file_id,
         unique_id=unique_id,
     )
     if row is None:
@@ -412,7 +415,7 @@ def _queue_transfer_for_completed_file(
 
     _queue_transfer_candidate(
         {
-            "id": _int_or_default(row["id"], 0),
+            "fileId": _int_or_default(row["id"], 0),
             "uniqueId": unique_id,
             "telegramId": telegram_id,
             "chatId": chat_id,
@@ -502,27 +505,23 @@ def _tdlib_monitor_deps() -> TdlibMonitorDeps:
         emit_file_update=_emit_file_update,
         emit_file_status=_emit_file_status,
         emit_download_aggregate=_emit_download_aggregate,
-        update_tdlib_file_status=lambda db,
-        telegram_id,
-        file_id,
-        unique_id,
-        status_payload: _db_update_tdlib_file_status(
-            db,
-            telegram_id=telegram_id,
-            file_id=file_id,
-            unique_id=unique_id,
-            status_payload=status_payload,
+        update_tdlib_file_status=lambda db, telegram_id, file_id, unique_id, status_payload: (
+            _db_update_tdlib_file_status(
+                db,
+                telegram_id=telegram_id,
+                file_id=file_id,
+                unique_id=unique_id,
+                status_payload=status_payload,
+            )
         ),
-        update_speed_tracker=lambda db,
-        telegram_id,
-        file_id,
-        downloaded_size,
-        timestamp_ms: _update_speed_tracker(
-            db,
-            telegram_id=telegram_id,
-            file_id=file_id,
-            downloaded_size=downloaded_size,
-            timestamp_ms=timestamp_ms,
+        update_speed_tracker=lambda db, telegram_id, file_id, downloaded_size, timestamp_ms: (
+            _update_speed_tracker(
+                db,
+                telegram_id=telegram_id,
+                file_id=file_id,
+                downloaded_size=downloaded_size,
+                timestamp_ms=timestamp_ms,
+            )
         ),
         clear_speed_tracker_file=lambda telegram_id, file_id: _clear_speed_tracker_file(
             telegram_id=telegram_id,

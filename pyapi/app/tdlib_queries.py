@@ -4,7 +4,10 @@ import sqlite3
 import time
 from typing import Any
 
-from .file_record_ops import find_file_by_unique as _find_file_by_unique
+from .file_record_ops import (
+    find_file_by_identity as _find_file_by_identity,
+    find_file_by_unique as _find_file_by_unique,
+)
 from .tdlib import TdlibAuthManager
 from .tdlib_file_mapper import td_message_to_file
 
@@ -484,6 +487,7 @@ def _apply_archive_download_state(
         return normalized
 
     unique_id = str(normalized.get("uniqueId") or "").strip()
+    file_id = _int_or_default(normalized.get("id"), 0)
     if not unique_id:
         return normalized
 
@@ -513,7 +517,13 @@ def _apply_archive_download_state(
     if completion_date > 0:
         normalized["completionDate"] = completion_date
 
-    transfer_status = str(existing["transfer_status"] or "").strip()
+    exact = _find_file_by_identity(
+        db,
+        telegram_id=telegram_id,
+        file_id=file_id,
+        unique_id=unique_id,
+    )
+    transfer_status = str(exact["transfer_status"] or "").strip() if exact else ""
     if transfer_status:
         normalized["transferStatus"] = transfer_status
 
