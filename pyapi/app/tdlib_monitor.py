@@ -23,6 +23,9 @@ logger = logging.getLogger(__name__)
 _STATE_LOCK = Lock()
 _TDLIB_DOWNLOAD_TASKS: dict[tuple[str, int, int], asyncio.Task[Any]] = {}
 _TDLIB_DOWNLOAD_PROGRESS: dict[tuple[str, int, int], dict[str, Any]] = {}
+MONITOR_POLL_INTERVAL_SECONDS = 0.8
+MONITOR_IDLE_AFTER_PROGRESS_ROUNDS = 3
+MONITOR_PENDING_IDLE_TIMEOUT_SECONDS = 15 * 60
 
 
 @dataclass(frozen=True)
@@ -156,6 +159,7 @@ async def _monitor_tdlib_download(
     seen_progress = False
     idle_rounds = 0
     last_status_signature: tuple[str, int, str] | None = None
+    pending_started_at = time.monotonic()
 
     try:
         while True:
@@ -174,7 +178,7 @@ async def _monitor_tdlib_download(
                     15.0,
                 )
             except Exception:
-                await asyncio.sleep(0.8)
+                await asyncio.sleep(MONITOR_POLL_INTERVAL_SECONDS)
                 continue
 
             if str(td_file.get("@type") or "") == "error":
@@ -261,12 +265,16 @@ async def _monitor_tdlib_download(
                 idle_rounds = 0
             else:
                 idle_rounds += 1
-                if seen_progress and idle_rounds >= 3:
+                if seen_progress and idle_rounds >= MONITOR_IDLE_AFTER_PROGRESS_ROUNDS:
                     break
-                if not seen_progress and idle_rounds >= 8:
+                if (
+                    not seen_progress
+                    and time.monotonic() - pending_started_at
+                    >= MONITOR_PENDING_IDLE_TIMEOUT_SECONDS
+                ):
                     break
 
-            await asyncio.sleep(0.8)
+            await asyncio.sleep(MONITOR_POLL_INTERVAL_SECONDS)
     finally:
         with _STATE_LOCK:
             _TDLIB_DOWNLOAD_TASKS.pop(monitor_key, None)
