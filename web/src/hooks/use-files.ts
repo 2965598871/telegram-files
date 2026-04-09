@@ -234,6 +234,34 @@ export function useFiles(
   }, [lastJsonMessage, pages]);
 
   useEffect(() => {
+    if (!accountId || !chatId) {
+      return;
+    }
+    if (lastJsonMessage?.type !== WebSocketMessageType.CHAT_UPDATE) {
+      return;
+    }
+
+    const data = lastJsonMessage.data as {
+      telegramId?: string;
+      chatId?: string;
+    };
+    if ((data.telegramId ?? "") !== accountId) {
+      return;
+    }
+    if (!isGroupChat && (data.chatId ?? "") !== chatId) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      void mutate();
+    }, 300);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [accountId, chatId, isGroupChat, lastJsonMessage, mutate]);
+
+  useEffect(() => {
     if ((noAccountSpecified || isGroupChat) && !filters.offline) {
       setFilters((prev) => ({
         ...prev,
