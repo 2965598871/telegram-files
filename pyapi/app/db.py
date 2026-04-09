@@ -310,10 +310,11 @@ def list_files(
     if search:
         where_clauses.append(
             "(file_name LIKE ? OR caption LIKE ? OR ("
-            "media_album_id != 0 AND media_album_id IN ("
-            "SELECT a.media_album_id FROM file_record AS a "
+            "media_album_id != 0 AND EXISTS ("
+            "SELECT 1 FROM file_record AS a "
             "WHERE a.telegram_id = file_record.telegram_id "
             "AND a.chat_id = file_record.chat_id "
+            "AND a.media_album_id = file_record.media_album_id "
             "AND a.type != 'thumbnail' "
             "AND a.caption LIKE ?)))"
         )

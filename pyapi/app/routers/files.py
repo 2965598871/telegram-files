@@ -279,7 +279,8 @@ async def telegram_chat_group_files(
     filters = _get_filters(request)
     sort = (filters.get("sort") or "").strip().lower()
     order = (filters.get("order") or "desc").strip().lower()
-    if chat_ids and sort == "date" and order == "desc":
+    has_search = bool((filters.get("search") or "").strip())
+    if chat_ids and sort == "date" and order == "desc" and not has_search:
         pages: list[dict[str, Any]] = []
         for chat_id in chat_ids:
             pages.append(
