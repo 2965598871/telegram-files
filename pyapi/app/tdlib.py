@@ -64,11 +64,9 @@ class _TdJsonApi:
         self._backend: _CtypesTdBackend | _PythonTdjsonBackend
         try:
             self._backend = _CtypesTdBackend(shared_lib_path, log_level)
-            self.backend_name = "ctypes"
         except TdlibConfigurationError as ctypes_exc:
             try:
                 self._backend = _PythonTdjsonBackend(log_level)
-                self.backend_name = "tdjson"
             except Exception as tdjson_exc:
                 candidates = ", ".join(_tdjson_library_candidates(shared_lib_path))
                 raise TdlibConfigurationError(
@@ -225,9 +223,6 @@ class _TdlibSession:
         self._stop_event = threading.Event()
         self._pending_lock = threading.Lock()
         self._pending: dict[str, Queue[dict[str, Any]]] = {}
-        self._auth_state_lock = threading.Lock()
-        self._auth_state_event = threading.Event()
-        self._last_auth_state_type = ""
         self._thread = threading.Thread(
             target=self._receive_loop,
             name=f"tdlib-session-{uuid4().hex[:8]}",
@@ -266,24 +261,6 @@ class _TdlibSession:
                 f"TDLib request timed out after {timeout_seconds:.1f}s"
             ) from exc
 
-    def wait_until_initialized(self, timeout_seconds: float) -> bool:
-        deadline = time.monotonic() + timeout_seconds
-        while True:
-            with self._auth_state_lock:
-                last_state_type = self._last_auth_state_type
-            if (
-                last_state_type
-                and last_state_type != "authorizationStateWaitTdlibParameters"
-            ):
-                return True
-
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                return False
-
-            self._auth_state_event.wait(timeout=min(0.5, remaining))
-            self._auth_state_event.clear()
-
     def _receive_loop(self) -> None:
         while not self._stop_event.is_set():
             raw = self._td_api.receive(self._client, 1.0)
@@ -312,11 +289,6 @@ class _TdlibSession:
             if payload.get("@type") == "updateAuthorizationState":
                 authorization_state = payload.get("authorization_state")
                 if isinstance(authorization_state, dict):
-                    with self._auth_state_lock:
-                        self._last_auth_state_type = str(
-                            authorization_state.get("@type") or ""
-                        )
-                    self._auth_state_event.set()
                     try:
                         self._on_authorization_state(authorization_state)
                     except Exception:

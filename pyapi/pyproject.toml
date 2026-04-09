@@ -1,0 +1,15 @@
+[tool.vulture]
+ignore_decorators = ["@app.*", "@router.*"]
+ignore_names = [
+    "row_factory",
+    "_raw",
+    "contains",
+    "startWith",
+    "endWith",
+    "isBlank",
+    "toLowerCase",
+    "isMatch",
+    "between",
+    "isNotEmpty",
+    "equals",
+]

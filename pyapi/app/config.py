@@ -47,7 +47,6 @@ def _load_dotenv_if_present() -> None:
 
 @dataclass(frozen=True)
 class AppConfig:
-    app_env: str
     app_root: Path
     db_type: str
     data_path: str
@@ -62,7 +61,6 @@ class AppConfig:
         _load_dotenv_if_present()
         app_root = Path(os.getenv("APP_ROOT", "./data")).resolve()
         config = cls(
-            app_env=os.getenv("APP_ENV", "prod"),
             app_root=app_root,
             db_type=os.getenv("DB_TYPE", "sqlite"),
             data_path=os.getenv("DATA_PATH", "data.db"),

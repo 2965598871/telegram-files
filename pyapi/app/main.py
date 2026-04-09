@@ -9,15 +9,12 @@ from uuid import uuid4
 
 from fastapi import (
     FastAPI,
-    HTTPException,
-    Query,
     Request,
-    Response,
     WebSocket,
     WebSocketDisconnect,
 )
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, PlainTextResponse
+from fastapi.responses import PlainTextResponse
 
 from .app_state import (
     EVENT_TYPE_AUTHORIZATION,
@@ -119,7 +116,6 @@ async def lifespan(app: FastAPI):
             ),
         )
     )
-    app.state.background_workers = worker_task
     try:
         yield
     finally:
