@@ -55,6 +55,27 @@ def find_file_by_identity(
     ).fetchone()
 
 
+def find_file_by_id(
+    db: sqlite3.Connection,
+    *,
+    telegram_id: int,
+    file_id: int,
+) -> sqlite3.Row | None:
+    if file_id <= 0:
+        return None
+
+    return db.execute(
+        """
+        SELECT *
+        FROM file_record
+        WHERE telegram_id = ? AND id = ?
+        ORDER BY message_id DESC
+        LIMIT 1
+        """,
+        (telegram_id, file_id),
+    ).fetchone()
+
+
 def _upsert_tdlib_thumbnail_record(
     db: sqlite3.Connection,
     *,
@@ -444,24 +465,19 @@ def update_tdlib_file_status(
             file_id=file_id,
             unique_id=normalized_unique,
         )
+    if target is None and file_id > 0:
+        target = find_file_by_id(
+            db,
+            telegram_id=telegram_id,
+            file_id=file_id,
+        )
+
     if target is None and normalized_unique:
         target = find_file_by_unique(
             db,
             telegram_id=telegram_id,
             unique_id=normalized_unique,
         )
-
-    if target is None and file_id > 0:
-        target = db.execute(
-            """
-            SELECT *
-            FROM file_record
-            WHERE telegram_id = ? AND id = ?
-            ORDER BY message_id DESC
-            LIMIT 1
-            """,
-            (telegram_id, file_id),
-        ).fetchone()
 
     if target is None:
         return
@@ -563,6 +579,14 @@ def file_for_transfer(
         telegram_id=telegram_id,
         file_id=file_id,
         unique_id=unique_id,
+    )
+    if row is not None:
+        return row
+
+    row = find_file_by_id(
+        db,
+        telegram_id=telegram_id,
+        file_id=file_id,
     )
     if row is not None:
         return row

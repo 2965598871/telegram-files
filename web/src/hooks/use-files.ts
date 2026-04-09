@@ -32,6 +32,21 @@ type FileResponse = {
 const getFileStatusKey = (fileId: number | undefined, uniqueId: string) =>
   `${fileId ?? 0}:${uniqueId}`;
 
+const getVisibleFileIdsForUniqueId = (
+  pages: FileResponse[] | undefined,
+  uniqueId: string,
+) => {
+  const ids = new Set<number>();
+  pages?.forEach((page) => {
+    page.files.forEach((file) => {
+      if (file.uniqueId === uniqueId) {
+        ids.add(file.id ?? 0);
+      }
+    });
+  });
+  return ids;
+};
+
 export function useFiles(
   accountId: string,
   chatId: string,
@@ -147,11 +162,17 @@ export function useFiles(
       removed?: boolean;
     };
 
+    const visibleFileIds = getVisibleFileIdsForUniqueId(pages, data.uniqueId);
+    const exactStatusKey = getFileStatusKey(data.fileId, data.uniqueId);
+    const aliasStatusKey =
+      visibleFileIds.size === 1
+        ? getFileStatusKey([...visibleFileIds][0], data.uniqueId)
+        : null;
+
     if (data.removed) {
-      const statusKey = getFileStatusKey(data.fileId, data.uniqueId);
       setLatestFileStatus((prev) => ({
         ...prev,
-        [statusKey]: {
+        [exactStatusKey]: {
           fileId: data.fileId,
           downloadStatus: "idle",
           localPath: undefined,
@@ -160,28 +181,57 @@ export function useFiles(
           transferStatus: "idle",
           removed: true,
         },
+        ...(aliasStatusKey && aliasStatusKey !== exactStatusKey
+          ? {
+              [aliasStatusKey]: {
+                fileId: data.fileId,
+                downloadStatus: "idle",
+                localPath: undefined,
+                completionDate: undefined,
+                downloadedSize: 0,
+                transferStatus: "idle",
+                removed: true,
+              },
+            }
+          : {}),
       }));
       return;
     }
 
-    const statusKey = getFileStatusKey(data.fileId, data.uniqueId);
     setLatestFileStatus((prev) => ({
       ...prev,
-      [statusKey]: {
+      [exactStatusKey]: {
         fileId: data.fileId,
         downloadStatus:
-          data.downloadStatus ?? prev[statusKey]?.downloadStatus,
-        localPath: data.localPath ?? prev[statusKey]?.localPath,
+          data.downloadStatus ?? prev[exactStatusKey]?.downloadStatus,
+        localPath: data.localPath ?? prev[exactStatusKey]?.localPath,
         completionDate:
-          data.completionDate ?? prev[statusKey]?.completionDate,
+          data.completionDate ?? prev[exactStatusKey]?.completionDate,
         downloadedSize:
-          data.downloadedSize ?? prev[statusKey]?.downloadedSize,
+          data.downloadedSize ?? prev[exactStatusKey]?.downloadedSize,
         transferStatus:
-          data.transferStatus ?? prev[statusKey]?.transferStatus,
-        thumbnailFile: data.thumbnailFile ?? prev[statusKey]?.thumbnailFile,
+          data.transferStatus ?? prev[exactStatusKey]?.transferStatus,
+        thumbnailFile: data.thumbnailFile ?? prev[exactStatusKey]?.thumbnailFile,
       },
+      ...(aliasStatusKey && aliasStatusKey !== exactStatusKey
+        ? {
+            [aliasStatusKey]: {
+              fileId: data.fileId,
+              downloadStatus:
+                data.downloadStatus ?? prev[aliasStatusKey]?.downloadStatus,
+              localPath: data.localPath ?? prev[aliasStatusKey]?.localPath,
+              completionDate:
+                data.completionDate ?? prev[aliasStatusKey]?.completionDate,
+              downloadedSize:
+                data.downloadedSize ?? prev[aliasStatusKey]?.downloadedSize,
+              transferStatus: prev[aliasStatusKey]?.transferStatus,
+              thumbnailFile:
+                data.thumbnailFile ?? prev[aliasStatusKey]?.thumbnailFile,
+            },
+          }
+        : {}),
     }));
-  }, [lastJsonMessage]);
+  }, [lastJsonMessage, pages]);
 
   useEffect(() => {
     if ((noAccountSpecified || isGroupChat) && !filters.offline) {
