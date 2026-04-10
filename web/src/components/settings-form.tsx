@@ -1,4 +1,4 @@
-import { Bell, Copy } from "lucide-react";
+import { Bell, Copy, Loader2, Wrench } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -8,7 +8,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import React, { type FormEvent } from "react";
+import React, { type FormEvent, useState } from "react";
 import { useSettings } from "@/hooks/use-settings";
 import { useTelegramAccount } from "@/hooks/use-telegram-account";
 import { useCopyToClipboard } from "@/hooks/use-copy-to-clipboard";
@@ -20,11 +20,32 @@ import { Slider } from "@/components/ui/slider";
 import { TagsInput } from "@/components/ui/tags-input";
 import { split } from "lodash";
 import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
+import useSWRMutation from "swr/mutation";
+import { POST } from "@/lib/api";
+import { useToast } from "@/hooks/use-toast";
+
+type MaintenanceStats = {
+  scanned: number;
+  updated: number;
+  skipped: number;
+  failed: number;
+  captionsPropagated?: number;
+};
+
+type MaintenanceResponse = {
+  telegramId: number;
+  limit: number;
+  album?: MaintenanceStats;
+  thumbnail?: MaintenanceStats;
+};
 
 export default function SettingsForm() {
   const { settings, setSetting, updateSettings } = useSettings();
   const { account } = useTelegramAccount();
   const [, copyToClipboard] = useCopyToClipboard();
+  const { toast } = useToast();
+  const [lastMaintenanceResult, setLastMaintenanceResult] =
+    useState<MaintenanceResponse | null>(null);
 
   const avgSpeedIntervalOptions = [
     { value: "60", label: "1 minute" },
@@ -46,6 +67,59 @@ export default function SettingsForm() {
     if (event && event.target instanceof HTMLInputElement) return;
     event?.stopPropagation();
     void setSetting(key, String(!(settings?.[key] === "true")));
+  };
+
+  const { trigger: triggerMaintenance, isMutating: isMaintenanceRunning } =
+    useSWRMutation(
+      account?.id ? `/telegram/${account.id}/maintenance/run` : null,
+      (key: string, { arg }: { arg: { album: boolean; thumbnail: boolean } }) =>
+        POST(key, {
+          limit: 100,
+          album: arg.album,
+          thumbnail: arg.thumbnail,
+        }) as Promise<MaintenanceResponse>,
+    );
+
+  const handleRunMaintenance = async (
+    mode: "all" | "album" | "thumbnail",
+  ) => {
+    if (!account?.id || account.status !== "active") {
+      toast({
+        variant: "error",
+        description: "Select an active account to run maintenance.",
+      });
+      return;
+    }
+
+    try {
+      const result = await triggerMaintenance({
+        album: mode !== "thumbnail",
+        thumbnail: mode !== "album",
+      });
+      setLastMaintenanceResult(result);
+
+      const parts = [
+        result.album
+          ? `album ${result.album.updated}/${result.album.scanned} updated`
+          : null,
+        result.thumbnail
+          ? `thumbnail ${result.thumbnail.updated}/${result.thumbnail.scanned} updated`
+          : null,
+      ].filter(Boolean);
+
+      toast({
+        variant: "success",
+        title: "Maintenance completed",
+        description: parts.join(" • ") || "No rows needed changes.",
+      });
+    } catch (error) {
+      toast({
+        variant: "error",
+        title: "Maintenance failed",
+        description:
+          error instanceof Error ? error.message : "Request failed.",
+      });
+    }
   };
 
   return (
@@ -73,6 +147,77 @@ export default function SettingsForm() {
             >
               <Copy className="h-4 w-4" />
             </Button>
+          </div>
+        </SettingsSection>
+        <SettingsSection title="Maintenance">
+          <div className="space-y-4">
+            <div className="rounded-[4px] bg-muted px-4 py-3 text-sm text-muted-foreground">
+              <Wrench className="mr-2 inline-block h-4 w-4" />
+              Backfill missing album metadata and thumbnails for the selected
+              account.
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="default"
+                disabled={isMaintenanceRunning || account?.status !== "active"}
+                onClick={() => void handleRunMaintenance("all")}
+              >
+                {isMaintenanceRunning ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Running...
+                  </>
+                ) : (
+                  "Run all"
+                )}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={isMaintenanceRunning || account?.status !== "active"}
+                onClick={() => void handleRunMaintenance("album")}
+              >
+                Album only
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={isMaintenanceRunning || account?.status !== "active"}
+                onClick={() => void handleRunMaintenance("thumbnail")}
+              >
+                Thumbnail only
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Runs a manual repair pass for old records missing `media_album_id`,
+              captions, or `thumbnail_unique_id`. Processes up to 100 rows per
+              pass.
+            </p>
+            {account?.status !== "active" && (
+              <p className="text-xs text-muted-foreground">
+                Select an active account to enable maintenance.
+              </p>
+            )}
+            {lastMaintenanceResult && (
+              <div className="rounded-[4px] border border-border bg-muted/40 p-4 text-sm">
+                <p className="font-medium text-foreground">Last run</p>
+                <div className="mt-2 space-y-2 text-muted-foreground">
+                  {lastMaintenanceResult.album && (
+                    <div>
+                      <span className="font-medium text-foreground">Album:</span>{" "}
+                      scanned {lastMaintenanceResult.album.scanned}, updated {lastMaintenanceResult.album.updated}, skipped {lastMaintenanceResult.album.skipped}, failed {lastMaintenanceResult.album.failed}
+                    </div>
+                  )}
+                  {lastMaintenanceResult.thumbnail && (
+                    <div>
+                      <span className="font-medium text-foreground">Thumbnail:</span>{" "}
+                      scanned {lastMaintenanceResult.thumbnail.scanned}, updated {lastMaintenanceResult.thumbnail.updated}, skipped {lastMaintenanceResult.thumbnail.skipped}, failed {lastMaintenanceResult.thumbnail.failed}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </SettingsSection>
         <SettingsSection title="Speed units">
