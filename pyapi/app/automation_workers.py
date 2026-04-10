@@ -245,15 +245,28 @@ def _group_chat_ids(group: dict[str, Any]) -> list[int]:
     return result
 
 
+def _automation_feature_enabled(
+    automation: dict[str, Any] | None,
+    feature_key: str,
+) -> bool:
+    if not isinstance(automation, dict):
+        return False
+    feature_cfg = automation.get(feature_key)
+    return isinstance(feature_cfg, dict) and bool(feature_cfg.get("enabled"))
+
+
 def _resolve_effective_automation_for_chat(
     *,
     telegram_id: int,
     chat_id: int,
     direct_automations: dict[tuple[int, int], dict[str, Any]],
     group_automations: list[dict[str, Any]],
+    feature_key: str | None = None,
 ) -> dict[str, Any] | None:
     direct = direct_automations.get((telegram_id, chat_id))
-    if isinstance(direct, dict):
+    if isinstance(direct, dict) and (
+        feature_key is None or _automation_feature_enabled(direct, feature_key)
+    ):
         return direct
 
     for group in group_automations:
@@ -262,8 +275,12 @@ def _resolve_effective_automation_for_chat(
         if chat_id not in _group_chat_ids(group):
             continue
         auto = group.get("auto")
-        if isinstance(auto, dict):
+        if isinstance(auto, dict) and (
+            feature_key is None or _automation_feature_enabled(auto, feature_key)
+        ):
             return auto
+    if isinstance(direct, dict):
+        return direct
     return None
 
 
@@ -1225,7 +1242,9 @@ async def _run_transfer_scan_cycle(app: FastAPI) -> None:
             continue
 
         for chat_id in _group_chat_ids(group):
-            if (telegram_id, chat_id) in automations:
+            if _automation_feature_enabled(
+                automations.get((telegram_id, chat_id)), "transfer"
+            ):
                 continue
 
             candidates = _db_transfer_candidates(
@@ -1274,6 +1293,7 @@ async def _run_transfer_tick(deps: WorkerDeps, app: FastAPI) -> None:
         chat_id=chat_id,
         direct_automations=automations,
         group_automations=group_automations,
+        feature_key="transfer",
     )
     if not isinstance(automation, dict):
         return

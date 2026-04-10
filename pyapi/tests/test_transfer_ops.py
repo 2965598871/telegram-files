@@ -1,3 +1,4 @@
+import asyncio
 import json
 import os
 import sqlite3
@@ -6,7 +7,22 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from fastapi import FastAPI
+
+from app.automation_workers import (
+    TRANSFER_WAITING,
+    WorkerDeps,
+    _run_transfer_scan_cycle,
+    _run_transfer_tick,
+    reset_worker_state,
+)
 from app.db import init_schema
+from app.db import (
+    create_chat_group,
+    update_auto_settings,
+    update_chat_group_auto_settings,
+)
+from app.download_runtime import _queue_transfer_for_completed_file
 from app.file_record_ops import file_for_transfer, upsert_tdlib_file_record
 from app.transfer_ops import execute_transfer
 
@@ -26,6 +42,12 @@ class _FakeResponse:
 
 
 class TransferOpsTest(unittest.TestCase):
+    def setUp(self) -> None:
+        reset_worker_state()
+
+    def tearDown(self) -> None:
+        reset_worker_state()
+
     def _row_for_source(self, source_path: Path) -> sqlite3.Row:
         conn = sqlite3.connect(":memory:")
         conn.row_factory = sqlite3.Row
@@ -52,6 +74,106 @@ class TransferOpsTest(unittest.TestCase):
         row = conn.execute("SELECT * FROM file_record LIMIT 1").fetchone()
         self.assertIsNotNone(row)
         return row
+
+    def _insert_completed_file(
+        self,
+        conn: sqlite3.Connection,
+        *,
+        source_path: Path,
+        caption: str = "#trip album",
+    ) -> None:
+        upsert_tdlib_file_record(
+            conn,
+            file_payload={
+                "id": 222,
+                "uniqueId": "album-second",
+                "telegramId": 1,
+                "chatId": 100,
+                "messageId": 51,
+                "mediaAlbumId": 0,
+                "type": "photo",
+                "mimeType": "image/jpeg",
+                "size": 1234,
+                "downloadedSize": 1234,
+                "thumbnail": "",
+                "downloadStatus": "completed",
+                "date": 1710000000,
+                "hasSensitiveContent": False,
+                "startDate": 0,
+                "completionDate": 1710000100000,
+                "extra": {"width": 640, "height": 480, "type": "x"},
+                "threadChatId": 0,
+                "messageThreadId": 0,
+                "reactionCount": 0,
+                "transferStatus": "idle",
+                "fileName": source_path.name,
+                "caption": caption,
+                "localPath": str(source_path),
+            },
+        )
+
+    def _configure_group_transfer(
+        self,
+        conn: sqlite3.Connection,
+        *,
+        destination: Path,
+    ) -> None:
+        create_chat_group(
+            conn,
+            telegram_id=1,
+            group_id="travel",
+            name="Travel",
+            chat_ids=[100, 101],
+        )
+        update_chat_group_auto_settings(
+            conn,
+            telegram_id=1,
+            group_id="travel",
+            auto_payload={
+                "transfer": {
+                    "enabled": True,
+                    "rule": {
+                        "destination": str(destination),
+                        "transferPolicy": "GROUP_BY_HASHTAG",
+                        "duplicationPolicy": "OVERWRITE",
+                        "extra": {
+                            "hashtagRules": [
+                                {
+                                    "hashtag": "trip",
+                                    "folder": "Trips",
+                                    "matchType": "EXACT",
+                                }
+                            ]
+                        },
+                    },
+                }
+            },
+        )
+
+    def _configure_direct_download_only(self, conn: sqlite3.Connection) -> None:
+        update_auto_settings(
+            conn,
+            telegram_id=1,
+            chat_id=100,
+            auto_payload={
+                "download": {
+                    "enabled": True,
+                }
+            },
+        )
+
+    def _worker_deps(self) -> WorkerDeps:
+        async def _emit_file_status(_payload: dict[str, object]) -> None:
+            return None
+
+        return WorkerDeps(
+            tdlib_account_root_path=lambda *_args, **_kwargs: None,
+            emit_file_status=_emit_file_status,
+            td_file_status_payload=lambda payload: payload,
+            ensure_tdlib_download_monitor=lambda *_args, **_kwargs: None,
+            avg_speed_interval=lambda _db: 0,
+            persist_speed_statistics=lambda _db: None,
+        )
 
     def test_group_by_ai_moves_file_into_classified_folder(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -256,6 +378,64 @@ class TransferOpsTest(unittest.TestCase):
             self.assertEqual(Path(resolved_path), expected_path)
             self.assertTrue(expected_path.exists())
             self.assertFalse(source_path.exists())
+
+    def test_group_transfer_runs_when_chat_only_has_download_automation(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            source_path = temp_path / "second.jpg"
+            source_path.write_text("hello", encoding="utf-8")
+            destination = temp_path / "dest"
+
+            conn = sqlite3.connect(":memory:")
+            conn.row_factory = sqlite3.Row
+            init_schema(conn)
+            self._insert_completed_file(conn, source_path=source_path)
+            self._configure_direct_download_only(conn)
+            self._configure_group_transfer(conn, destination=destination)
+
+            _queue_transfer_for_completed_file(
+                conn,
+                telegram_id=1,
+                file_id=222,
+                unique_id="album-second",
+            )
+
+            self.assertEqual(len(TRANSFER_WAITING), 1)
+
+            app = FastAPI()
+            app.state.db = conn
+            asyncio.run(_run_transfer_tick(self._worker_deps(), app))
+
+            expected_path = destination / "Trips" / "second.jpg"
+            self.assertTrue(expected_path.exists())
+            self.assertFalse(source_path.exists())
+
+    def test_group_transfer_history_scan_ignores_non_transfer_chat_automation(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            source_path = temp_path / "second.jpg"
+            source_path.write_text("hello", encoding="utf-8")
+            destination = temp_path / "dest"
+
+            conn = sqlite3.connect(":memory:")
+            conn.row_factory = sqlite3.Row
+            init_schema(conn)
+            self._insert_completed_file(conn, source_path=source_path)
+            self._configure_direct_download_only(conn)
+            self._configure_group_transfer(conn, destination=destination)
+
+            app = FastAPI()
+            app.state.db = conn
+            asyncio.run(_run_transfer_scan_cycle(app))
+
+            self.assertEqual(len(TRANSFER_WAITING), 1)
+            queued = TRANSFER_WAITING[0]
+            self.assertEqual(queued["telegramId"], 1)
+            self.assertEqual(queued["chatId"], 100)
+            self.assertEqual(queued["fileId"], 222)
+            self.assertEqual(queued["uniqueId"], "album-second")
 
 
 if __name__ == "__main__":

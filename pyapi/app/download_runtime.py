@@ -19,6 +19,9 @@ from .app_state import (
     _emit_ws_payload,
 )
 from .automation_workers import queue_transfer_candidate as _queue_transfer_candidate
+from .automation_workers import (
+    _resolve_effective_automation_for_chat,
+)
 from .db import (
     find_chat_group_for_chat,
     get_automation_map,
@@ -394,14 +397,18 @@ def _queue_transfer_for_completed_file(
         return
 
     automations = get_automation_map(db, telegram_id=telegram_id)
-    automation = automations.get((telegram_id, chat_id))
-    if not isinstance(automation, dict):
-        group = find_chat_group_for_chat(
-            db,
-            telegram_id=telegram_id,
-            chat_id=chat_id,
-        )
-        automation = group.get("auto") if isinstance(group, dict) else None
+    group = find_chat_group_for_chat(
+        db,
+        telegram_id=telegram_id,
+        chat_id=chat_id,
+    )
+    automation = _resolve_effective_automation_for_chat(
+        telegram_id=telegram_id,
+        chat_id=chat_id,
+        direct_automations=automations,
+        group_automations=[group] if isinstance(group, dict) else [],
+        feature_key="transfer",
+    )
     if not isinstance(automation, dict):
         return
 
