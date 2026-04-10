@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   type DownloadStatus,
   type FileFilter,
@@ -10,8 +10,8 @@ import useSWRInfinite from "swr/infinite";
 import { useWebsocket } from "@/hooks/use-websocket";
 import { WebSocketMessageType } from "@/lib/websocket-types";
 import { useLocalStorage } from "@/hooks/use-local-storage";
-import { useDebounce } from "use-debounce";
 import { getFilesApiPath, isGroupChatId } from "@/lib/chat-target";
+import { request } from "@/lib/api";
 
 const DEFAULT_FILTERS: FileFilter = {
   search: "",
@@ -29,6 +29,9 @@ type FileResponse = {
   nextFromMessageId: number;
 };
 
+const getFileCacheKey = (file: TelegramFile) =>
+  `${file.telegramId}:${file.chatId}:${file.messageId}:${file.uniqueId}`;
+
 const getFileStatusKey = (fileId: number | undefined, uniqueId: string) =>
   `${fileId ?? 0}:${uniqueId}`;
 
@@ -45,6 +48,74 @@ const getVisibleFileIdsForUniqueId = (
     });
   });
   return ids;
+};
+
+const rebuildVisiblePages = (
+  currentPages: FileResponse[],
+  freshFirstPage: FileResponse,
+) => {
+  if (currentPages.length === 0) {
+    return [freshFirstPage];
+  }
+
+  const pageLengths = currentPages.map((page, index) =>
+    index === 0 ? freshFirstPage.files.length : page.files.length,
+  );
+  const totalSlots = pageLengths.reduce((sum, pageLength) => sum + pageLength, 0);
+  if (totalSlots === 0) {
+    return [freshFirstPage];
+  }
+
+  const seen = new Set<string>();
+  const mergedFiles: TelegramFile[] = [];
+  for (const file of [
+    ...freshFirstPage.files,
+    ...currentPages.flatMap((page) => page.files),
+  ]) {
+    const fileKey = getFileCacheKey(file);
+    if (seen.has(fileKey)) {
+      continue;
+    }
+    seen.add(fileKey);
+    mergedFiles.push(file);
+  }
+
+  const trimmedFiles = mergedFiles.slice(0, totalSlots);
+  const currentLastPage = currentPages[currentPages.length - 1];
+  const hasMoreBeyondLoaded =
+    mergedFiles.length > trimmedFiles.length ||
+    freshFirstPage.count > trimmedFiles.length ||
+    (currentLastPage?.nextFromMessageId ?? 0) !== 0;
+
+  let offset = 0;
+  return currentPages.map((page, index) => {
+    const pageLength = pageLengths[index] ?? 0;
+    const pageFiles = trimmedFiles.slice(offset, offset + pageLength);
+    offset += pageLength;
+
+    const lastFile = pageFiles[pageFiles.length - 1];
+    const isLastPage = index === currentPages.length - 1;
+    const hasLoadedNextPage = offset < trimmedFiles.length;
+
+    return {
+      ...page,
+      files: pageFiles,
+      count: isLastPage
+        ? hasMoreBeyondLoaded
+          ? Math.max(
+              trimmedFiles.length + 1,
+              freshFirstPage.count,
+              currentLastPage?.count ?? 0,
+            )
+          : trimmedFiles.length
+        : page.count,
+      nextFromMessageId: lastFile
+        ? hasLoadedNextPage || (isLastPage && hasMoreBeyondLoaded)
+          ? lastFile.messageId
+          : 0
+        : 0,
+    };
+  });
 };
 
 export function useFiles(
@@ -78,10 +149,10 @@ export function useFiles(
     "telegramFileListFilter",
     { ...DEFAULT_FILTERS, offline: noAccountSpecified || isGroupChat },
   );
-  const getKey = (page: number, previousPageData: FileResponse) => {
+  const createSearchParams = useCallback(() => {
     const effectiveSort = filters.sort ?? (isGroupChat ? "date" : undefined);
     const effectiveOrder = filters.order ?? (isGroupChat ? "desc" : undefined);
-    const params = new URLSearchParams({
+    return new URLSearchParams({
       ...(filters.search && {
         search: window.encodeURIComponent(filters.search),
       }),
@@ -102,31 +173,38 @@ export function useFiles(
       ...(effectiveSort && { sort: effectiveSort }),
       ...(effectiveOrder && { order: effectiveOrder }),
     });
+  }, [filters, isGroupChat, link, messageThreadId]);
 
-    if (page === 0) {
-      return `${url}?${params.toString()}`;
-    }
+  const getKey = useCallback(
+    (page: number, previousPageData: FileResponse | null) => {
+      const effectiveSort = filters.sort ?? (isGroupChat ? "date" : undefined);
+      const params = createSearchParams();
 
-    if (!previousPageData) {
-      return null;
-    }
-
-    params.set("fromMessageId", previousPageData.nextFromMessageId.toString());
-    if ((filters.offline || isGroupChat) && previousPageData.files.length > 0) {
-      const lastFile =
-        previousPageData.files[previousPageData.files.length - 1];
-      if (effectiveSort === "size") {
-        params.set("fromSortField", lastFile!.size.toString());
-      } else if (effectiveSort === "completion_date") {
-        params.set("fromSortField", lastFile!.completionDate.toString());
-      } else if (effectiveSort === "date") {
-        params.set("fromSortField", lastFile!.date.toString());
-      } else if (effectiveSort === "reaction_count") {
-        params.set("fromSortField", lastFile!.reactionCount.toString());
+      if (page === 0) {
+        return `${url}?${params.toString()}`;
       }
-    }
-    return `${url}?${params.toString()}`;
-  };
+
+      if (!previousPageData) {
+        return null;
+      }
+
+      params.set("fromMessageId", previousPageData.nextFromMessageId.toString());
+      if ((filters.offline || isGroupChat) && previousPageData.files.length > 0) {
+        const lastFile = previousPageData.files[previousPageData.files.length - 1];
+        if (effectiveSort === "size") {
+          params.set("fromSortField", lastFile!.size.toString());
+        } else if (effectiveSort === "completion_date") {
+          params.set("fromSortField", lastFile!.completionDate.toString());
+        } else if (effectiveSort === "date") {
+          params.set("fromSortField", lastFile!.date.toString());
+        } else if (effectiveSort === "reaction_count") {
+          params.set("fromSortField", lastFile!.reactionCount.toString());
+        }
+      }
+      return `${url}?${params.toString()}`;
+    },
+    [createSearchParams, filters.offline, isGroupChat, filters.sort, url],
+  );
 
   const {
     data: pages,
@@ -139,12 +217,28 @@ export function useFiles(
   } = useSWRInfinite<FileResponse, Error>(getKey, {
     revalidateFirstPage: false,
     keepPreviousData: true,
+    revalidateOnFocus: false,
+    revalidateOnReconnect: false,
   });
 
-  const [debounceLoading] = useDebounce(isLoading || isValidating, 500, {
-    leading: true,
-    maxWait: 1000,
-  });
+  const refreshVisiblePages = useCallback(async () => {
+    const firstPageKey = getKey(0, null);
+    if (!firstPageKey) {
+      return;
+    }
+
+    const freshFirstPage = await request<FileResponse>(firstPageKey);
+    await mutate((currentPages) => {
+      if (!currentPages || currentPages.length === 0) {
+        return [freshFirstPage];
+      }
+      return rebuildVisiblePages(currentPages, freshFirstPage);
+    }, false);
+  }, [getKey, mutate]);
+
+  const isLoadingMore = Boolean(pages) && size > (pages?.length ?? 0);
+  const isInitialLoading = !pages && (isLoading || isValidating);
+  const isRefreshing = Boolean(pages) && isValidating && !isLoadingMore;
 
   useEffect(() => {
     if (lastJsonMessage?.type !== WebSocketMessageType.FILE_STATUS) {
@@ -253,13 +347,13 @@ export function useFiles(
     }
 
     const timeoutId = window.setTimeout(() => {
-      void mutate();
+      void refreshVisiblePages();
     }, 300);
 
     return () => {
       window.clearTimeout(timeoutId);
     };
-  }, [accountId, chatId, isGroupChat, lastJsonMessage, mutate]);
+  }, [accountId, chatId, isGroupChat, lastJsonMessage, refreshVisiblePages]);
 
   useEffect(() => {
     if ((noAccountSpecified || isGroupChat) && !filters.offline) {
@@ -362,14 +456,20 @@ export function useFiles(
 
   const reload = async () => {
     setLatestFileStatus({});
-    await mutate();
+    if (!pages || pages.length === 0) {
+      await mutate();
+      return;
+    }
+    await refreshVisiblePages();
   };
 
   return {
     size,
     files,
     filters,
-    isLoading: debounceLoading,
+    isLoading: isInitialLoading || isLoadingMore,
+    isRefreshing,
+    isLoadingMore,
     reload,
     updateField,
     handleFilterChange,
